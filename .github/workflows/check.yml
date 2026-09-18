@@ -1,0 +1,50 @@
+name: Theme checks
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: astral-sh/setup-uv@d0d8abe699bfb85fec6de9f7adb5ae17292296ff # v6
+        with:
+          enable-cache: true
+      - name: Install locked Python environment
+        run: uv sync --locked
+      - name: Install pinned Playwright CLI and WebKit
+        run: |
+          npm install --global @playwright/cli@0.1.20
+          playwright-cli install-browser webkit --with-deps
+      - name: Initialize the untouched template for its own check
+        if: ${{ hashFiles('.nnw-theme-uninitialized') != '' }}
+        run: >-
+          uv run nnw-theme init
+          --name "Neutral Reader"
+          --creator "Template Maintainer"
+          --homepage "https://github.com/dave-atx/netnewswire-theme-template"
+          --identifier "io.github.dave-atx.neutral-reader"
+          --confirm-identifier "io.github.dave-atx.neutral-reader"
+          --marketplace no
+          --no-install-browser
+      - name: Lint and test tooling
+        run: |
+          uv run ruff check .
+          uv run ruff format --check .
+          uv run python -m unittest discover -s tests -v
+      - name: Run the release gate
+        run: uv run nnw-theme check
+      - name: Upload diagnostic preview
+        if: ${{ failure() || github.event_name == 'pull_request' }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: theme-preview-${{ github.sha }}
+          path: |
+            build/preview/
+            build/check-report.txt
+          if-no-files-found: warn
