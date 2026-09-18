@@ -24,6 +24,39 @@
   }
 }
 
+/* iOS replaces this with the reader's Dynamic Type size. macOS leaves the macro
+   literal, so the declaration is invalid there and is dropped — no platform query
+   needed, and none wanted: desktop WebKit lacks -webkit-touch-callout, so such a
+   query previews false. See references/theme-format.md. */
+:root {
+  font-size: [[font-size]]px;
+  -webkit-text-size-adjust: none;
+}
+
+/* macOS applies one of these to the text_size_class element; inert on iOS.
+   NetNewsWire emits the capital-L spellings, its own themes select lowercase. */
+.smallText {
+  font-size: 14px;
+}
+
+.mediumText {
+  font-size: 16px;
+}
+
+.largeText {
+  font-size: 18px;
+}
+
+.xlargeText,
+.xLargeText {
+  font-size: 20px;
+}
+
+.xxlargeText,
+.xxLargeText {
+  font-size: 22px;
+}
+
 html {
   background: var(--canvas);
   color: var(--text);

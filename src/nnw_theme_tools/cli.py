@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 import plistlib
 import re
 import shutil
@@ -10,6 +11,7 @@ import time
 import webbrowser
 import zipfile
 from pathlib import Path
+from typing import Any
 from urllib.parse import urlparse
 
 from .browser import check_pages, serve, setup_webkit
@@ -24,7 +26,6 @@ from .project import (
 )
 from .render import RenderTarget, check_targets, normal_targets, render_site
 from .snapshot import ensure_snapshot
-from .validate import ValidationReport, validate_archive, validate_source
 
 IDENTITY_START = "<!-- nnw-theme-identity:start -->"
 IDENTITY_END = "<!-- nnw-theme-identity:end -->"
@@ -38,16 +39,23 @@ def _identifier_slug(value: str) -> str:
     return re.sub(r"[^a-z0-9-]+", "", _slug(value)) or "theme"
 
 
-def _github_user() -> str | None:
+def _repository() -> dict[str, Any]:
+    """Owner and fork status of the current repository, when gh can report them."""
     if not shutil.which("gh"):
-        return None
+        return {}
     result = subprocess.run(
-        ["gh", "repo", "view", "--json", "owner", "--jq", ".owner.login"],
+        ["gh", "repo", "view", "--json", "owner,isFork"],
         capture_output=True,
         text=True,
         check=False,
     )
-    return result.stdout.strip() if result.returncode == 0 else None
+    if result.returncode:
+        return {}
+    try:
+        value = json.loads(result.stdout)
+    except json.JSONDecodeError:
+        return {}
+    return value if isinstance(value, dict) else {}
 
 
 def _default_identifier(name: str, homepage: str, github_user: str | None) -> str:
@@ -136,7 +144,15 @@ def command_init(args: argparse.Namespace) -> None:
         raise ThemeError("this repository is already initialized")
 
     interactive = not all((args.name, args.creator, args.homepage))
-    github_user = args.github_user or _github_user()
+    repository = _repository()
+    if repository.get("isFork"):
+        print(
+            "Warning: this repository is a fork. The theme marketplace skips forks, so "
+            "the theme will never be discovered. Start from GitHub's \"Use this "
+            'template" button instead, then rerun initialization.',
+            file=sys.stderr,
+        )
+    github_user = args.github_user or repository.get("owner", {}).get("login")
     name = args.name or _prompt_text("Theme name", "Quiet Reader")
     creator = args.creator or _prompt_text("Your name", "Theme Author")
     homepage_default = f"https://github.com/{github_user}" if github_user else ""
@@ -206,22 +222,18 @@ def command_init(args: argparse.Namespace) -> None:
     print("Next: describe the design you want, then run `uv run nnw-theme preview`.")
 
 
-def _print_report(report: ValidationReport) -> None:
-    for warning in report.warnings:
+def _print_warnings(warnings: list[str]) -> None:
+    for warning in warnings:
         print(f"warning: {warning}", file=sys.stderr)
-    for error in report.errors:
-        print(f"error: {error}", file=sys.stderr)
 
 
 def command_package(args: argparse.Namespace) -> None:
     root = find_root()
     theme = find_theme(root)
-    report = validate_source(theme, allow_remote_media=args.allow_remote_media)
-    _print_report(report)
-    report.require_ok()
-    destination = build_archive(
+    destination, warnings = build_archive(
         theme, root / args.output_dir, allow_remote_media=args.allow_remote_media
     )
+    _print_warnings(warnings)
     print(destination)
 
 
@@ -255,15 +267,10 @@ def command_render(args: argparse.Namespace) -> None:
 def command_check(args: argparse.Namespace) -> None:
     root = find_root()
     theme = find_theme(root)
-    report = validate_source(theme, allow_remote_media=args.allow_remote_media)
-    _print_report(report)
-    report.require_ok()
-    archive = build_archive(
+    archive, warnings = build_archive(
         theme, root / "build" / "release", allow_remote_media=args.allow_remote_media
     )
-    archive_report = validate_archive(archive.read_bytes(), archive.name)
-    _print_report(archive_report)
-    archive_report.require_ok()
+    _print_warnings(warnings)
     targets = check_targets()
     site = render_site(root, theme, targets)
     failures = check_pages(site, targets)

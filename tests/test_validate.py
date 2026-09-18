@@ -99,9 +99,10 @@ class ArchiveValidationTests(unittest.TestCase):
     def test_package_is_deterministic_and_valid(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             theme = make_theme(Path(directory))
-            first = archive_bytes(theme)
-            second = archive_bytes(theme)
+            first, warnings = archive_bytes(theme)
+            second, _ = archive_bytes(theme)
             self.assertEqual(first, second)
+            self.assertEqual(warnings, [])
             self.assertEqual(validate_archive(first, "Reader.nnwtheme.zip").errors, [])
 
     def test_rejects_traversal(self) -> None:

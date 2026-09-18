@@ -17,14 +17,12 @@ permissions:
 
 jobs:
   release:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           ref: ${{ github.event.repository.default_branch }}
           fetch-depth: 0
-      - uses: astral-sh/setup-uv@d0d8abe699bfb85fec6de9f7adb5ae17292296ff # v6
-      - run: uv sync --locked
       - name: Validate tag and default-branch commit
         env:
           TAG: ${{ inputs.tag }}
@@ -36,10 +34,7 @@ jobs:
             exit 1
           fi
           echo "Releasing default-branch commit $(git rev-parse HEAD)" | tee -a "$GITHUB_STEP_SUMMARY"
-      - name: Install pinned Playwright CLI and WebKit
-        run: |
-          npm install --global @playwright/cli@0.1.20
-          playwright-cli install-browser webkit --with-deps
+      - uses: ./.github/actions/setup
       - name: Lint, test, validate, and package
         run: |
           uv run ruff check .

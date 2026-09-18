@@ -6,7 +6,6 @@ from pathlib import Path
 from typing import Any
 
 REQUIRED_THEME_FILES = ("Info.plist", "template.html", "stylesheet.css")
-OPTIONAL_THEME_FILE_PREFIXES = ("LICENSE", "NOTICE")
 PLACEHOLDER_MARKER = ".nnw-theme-uninitialized"
 
 

@@ -7,6 +7,7 @@ on:
 
 permissions:
   contents: read
+  actions: read
   pages: write
   id-token: write
 
@@ -24,32 +25,19 @@ jobs:
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      # Reuses the gallery the passing check rendered; no second 16-render gate.
+      - name: Download the checked preview gallery
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
         with:
-          ref: ${{ github.event.workflow_run.head_sha }}
-      - uses: astral-sh/setup-uv@d0d8abe699bfb85fec6de9f7adb5ae17292296ff # v6
-      - run: uv sync --locked
-      - name: Install pinned Playwright CLI and WebKit
-        run: |
-          npm install --global @playwright/cli@0.1.20
-          playwright-cli install-browser webkit --with-deps
-      - name: Initialize the untouched template for its own preview
-        if: ${{ hashFiles('.nnw-theme-uninitialized') != '' }}
-        run: >-
-          uv run nnw-theme init
-          --name "Neutral Reader"
-          --creator "Template Maintainer"
-          --homepage "https://github.com/dave-atx/netnewswire-theme-template"
-          --identifier "io.github.dave-atx.neutral-reader"
-          --confirm-identifier "io.github.dave-atx.neutral-reader"
-          --marketplace no
-          --no-install-browser
-      - run: uv run nnw-theme check
-      - uses: actions/configure-pages@983d7736d9b0ae728b81ab479565c72886d7745b # v5
-      - uses: actions/upload-pages-artifact@56afc609e74202658d3ffba0e8f6dda462b719fa # v3
+          name: theme-preview-${{ github.event.workflow_run.head_sha }}
+          path: build
+          run-id: ${{ github.event.workflow_run.id }}
+          github-token: ${{ github.token }}
+      - uses: actions/configure-pages@45bfe0192ca1faeb007ade9deae92b16b8254a0d # v6
+      - uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5
         with:
           path: build/preview
       - id: deployment
-        uses: actions/deploy-pages@d6db90164ac5ed86f2b6aed7e0febac5b3c0c03e # v4
+        uses: actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346 # v5

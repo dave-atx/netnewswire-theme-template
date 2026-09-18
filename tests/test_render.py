@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 import tempfile
 import unittest
 from pathlib import Path
@@ -7,6 +8,10 @@ from pathlib import Path
 from nnw_theme_tools.browser import _parse_state
 from nnw_theme_tools.project import find_theme
 from nnw_theme_tools.render import (
+    DEFAULT_DYNAMIC_TYPE_SIZE,
+    DEFAULT_TEXT_SIZE_CLASS,
+    LARGE_DYNAMIC_TYPE_SIZE,
+    LARGE_TEXT_SIZE_CLASS,
     check_targets,
     normal_targets,
     render_page,
@@ -22,7 +27,8 @@ def make_snapshot(parent: Path) -> Path:
         '<base href="[[baseURL]]"></head><body>[[body]]</body></html>',
         "iOS/page.html": "<html><head><title>[[title]]</title><style>[[style]]</style>"
         "</head><body>[[body]]</body></html>",
-        "Shared/core.css": "body { font-size: [[font-size]]px; }",
+        # core.css carries no macros upstream; [[font-size]] lives in theme CSS.
+        "Shared/core.css": "body { margin: 0; }",
         "Shared/main.js": "function processPage() {}",
         "Shared/newsfoot.js": "// test newsfoot",
         "Mac/main_mac.js": "function postRenderProcessing() {}",
@@ -47,7 +53,7 @@ class MacroTests(unittest.TestCase):
         self.assertEqual(len(normal_targets()), 12)
         self.assertEqual(len(check_targets()), 16)
         self.assertEqual(sum(not target.theme_scripts for target in check_targets()), 2)
-        self.assertEqual(sum(target.scale != 1 for target in check_targets()), 2)
+        self.assertEqual(sum(target.large_text for target in check_targets()), 2)
 
 
 class RenderTests(unittest.TestCase):
@@ -113,6 +119,68 @@ class RenderTests(unittest.TestCase):
             self.assertNotIn("window.themeRan", page)
             self.assertNotIn("window.articleRan", page)
             self.assertIn("function processPage()", page)
+
+
+class TextScalingTests(unittest.TestCase):
+    """NetNewsWire scales text per platform; the preview has to match it exactly."""
+
+    def setUp(self) -> None:
+        self.root = Path(__file__).resolve().parents[1]
+        self.theme = find_theme(self.root)
+        self.fixture = {"title": "Hello", "body": "<p>Readable article body.</p>"}
+
+    def render(self, target) -> str:
+        with tempfile.TemporaryDirectory() as directory:
+            snapshot = make_snapshot(Path(directory))
+            return render_page(self.root, self.theme, self.fixture, target, snapshot=snapshot)
+
+    def target(self, platform: str, *, large_text: bool = False):
+        pool = check_targets() if large_text else normal_targets()
+        return next(
+            item
+            for item in pool
+            if item.platform == platform
+            and item.large_text == large_text
+            and item.theme_scripts
+        )
+
+    def test_font_size_is_substituted_on_ios_and_left_literal_on_macos(self) -> None:
+        # styleSubstitutions() is empty on macOS, so no theme can rely on it there.
+        self.assertIn("[[font-size]]", self.render(self.target("mac")))
+
+        iphone = self.render(self.target("iphone"))
+        self.assertNotIn("[[font-size]]", iphone)
+        self.assertIn(f"font-size: {DEFAULT_DYNAMIC_TYPE_SIZE:g}px", iphone)
+        self.assertIn(
+            f"font-size: {LARGE_DYNAMIC_TYPE_SIZE:g}px",
+            self.render(self.target("iphone", large_text=True)),
+        )
+
+    def test_text_size_class_is_macos_only_and_defaults_to_large(self) -> None:
+        # An unset macOS preference falls back to ArticleTextSize.large, not medium.
+        self.assertEqual(DEFAULT_TEXT_SIZE_CLASS, "largeText")
+        self.assertIn(
+            f'class="articleBody {DEFAULT_TEXT_SIZE_CLASS}"', self.render(self.target("mac"))
+        )
+        self.assertIn(
+            f'class="articleBody {LARGE_TEXT_SIZE_CLASS}"',
+            self.render(self.target("mac", large_text=True)),
+        )
+        for platform in ("iphone", "ipad"):
+            page = self.render(self.target(platform))
+            self.assertIn('class="articleBody "', page)
+            self.assertNotIn("[[text_size_class]]", page)
+
+    def test_starter_theme_honors_both_scaling_mechanisms(self) -> None:
+        css = (self.theme / "stylesheet.css").read_text(encoding="utf-8")
+        self.assertIn("[[font-size]]", css)
+        for name in ("smallText", "mediumText", "largeText"):
+            self.assertIn(f".{name}", css)
+        # NetNewsWire emits the capital-L spellings; its own themes select lowercase.
+        for name in ("xLargeText", "xxLargeText", "xlargeText", "xxlargeText"):
+            self.assertIn(f".{name}", css)
+        # No desktop WebKit has -webkit-touch-callout; such a query previews false.
+        self.assertNotIn("@supports", re.sub(r"/\*.*?\*/", "", css, flags=re.DOTALL))
 
 
 if __name__ == "__main__":

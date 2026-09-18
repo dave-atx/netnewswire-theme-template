@@ -9,18 +9,10 @@ permissions:
 
 jobs:
   check:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
-      - uses: astral-sh/setup-uv@d0d8abe699bfb85fec6de9f7adb5ae17292296ff # v6
-        with:
-          enable-cache: true
-      - name: Install locked Python environment
-        run: uv sync --locked
-      - name: Install pinned Playwright CLI and WebKit
-        run: |
-          npm install --global @playwright/cli@0.1.20
-          playwright-cli install-browser webkit --with-deps
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: ./.github/actions/setup
       - name: Initialize the untouched template for its own check
         if: ${{ hashFiles('.nnw-theme-uninitialized') != '' }}
         run: >-
@@ -39,9 +31,10 @@ jobs:
           uv run python -m unittest discover -s tests -v
       - name: Run the release gate
         run: uv run nnw-theme check
-      - name: Upload diagnostic preview
-        if: ${{ failure() || github.event_name == 'pull_request' }}
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+      - name: Upload the preview gallery
+        # Pages deploys this instead of rebuilding; also the failure diagnostic.
+        if: ${{ always() }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: theme-preview-${{ github.sha }}
           path: |

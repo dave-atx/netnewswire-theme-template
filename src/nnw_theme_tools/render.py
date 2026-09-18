@@ -37,6 +37,12 @@ TEMPLATE_KEYS = (
     "text_size_class",
     "body",
 )
+# macOS scales through text_size_class, iOS through the font-size macro. largeText
+# is the macOS default: an unset preference falls back to ArticleTextSize.large.
+DEFAULT_TEXT_SIZE_CLASS = "largeText"
+LARGE_TEXT_SIZE_CLASS = "xxLargeText"
+DEFAULT_DYNAMIC_TYPE_SIZE = 17.0
+LARGE_DYNAMIC_TYPE_SIZE = 23.0
 WEBKIT_SHIM = """
 window.webkit = window.webkit || {messageHandlers: new Proxy({}, {
   get: function() { return {postMessage: function() {}}; }
@@ -54,14 +60,21 @@ class RenderTarget:
     appearance: str
     width: int
     height: int
-    scale: float = 1.0
+    large_text: bool = False
     theme_scripts: bool = True
 
     @property
+    def ios(self) -> bool:
+        return self.platform in {"iphone", "ipad"}
+
+    @property
     def slug(self) -> str:
-        suffix = "-no-article-js" if not self.theme_scripts else ""
-        scale = f"-large-{self.scale:g}" if self.scale != 1 else ""
-        return f"{self.fixture}-{self.platform}-{self.appearance}{scale}{suffix}"
+        parts = [self.fixture, self.platform, self.appearance]
+        if self.large_text:
+            parts.append("large-text")
+        if not self.theme_scripts:
+            parts.append("no-article-js")
+        return "-".join(parts)
 
 
 def normal_targets() -> list[RenderTarget]:
@@ -81,8 +94,8 @@ def normal_targets() -> list[RenderTarget]:
 def check_targets() -> list[RenderTarget]:
     return [
         *normal_targets(),
-        RenderTarget("kitchen-sink", "mac", "light", 1280, 800, scale=1.45),
-        RenderTarget("kitchen-sink", "iphone", "light", 393, 852, scale=1.35),
+        RenderTarget("kitchen-sink", "mac", "light", 1280, 800, large_text=True),
+        RenderTarget("kitchen-sink", "iphone", "light", 393, 852, large_text=True),
         RenderTarget("article", "mac", "light", 1280, 800, theme_scripts=False),
         RenderTarget("article", "iphone", "light", 393, 852, theme_scripts=False),
     ]
@@ -111,7 +124,7 @@ def _avatar_data_uri(title: str) -> str:
     return f"data:image/svg+xml;base64,{encoded}"
 
 
-def _fixture_mapping(fixture: dict[str, Any], *, ios: bool, scale: float) -> dict[str, str]:
+def _fixture_mapping(fixture: dict[str, Any], target: RenderTarget) -> dict[str, str]:
     mapping = {key: str(fixture.get(key, "")) for key in TEMPLATE_KEYS}
     if not mapping["dateline_style"]:
         mapping["dateline_style"] = (
@@ -119,11 +132,12 @@ def _fixture_mapping(fixture: dict[str, Any], *, ios: bool, scale: float) -> dic
         )
     if not mapping["avatar_src"] or mapping["avatar_src"].startswith("nnwImageIcon:"):
         mapping["avatar_src"] = _avatar_data_uri(mapping["feed_link_title"])
-    mapping["text_size_class"] = (
-        "" if ios else str(fixture.get("text_size_class", "mediumText"))
-    )
-    if scale != 1:
-        mapping["text_size_class"] += " nnw-preview-large-text"
+    if target.ios:
+        # NetNewsWire leaves this macro unresolved on iOS; empty renders the same.
+        mapping["text_size_class"] = ""
+    else:
+        default = LARGE_TEXT_SIZE_CLASS if target.large_text else DEFAULT_TEXT_SIZE_CLASS
+        mapping["text_size_class"] = str(fixture.get("text_size_class") or default)
     return mapping
 
 
@@ -152,8 +166,7 @@ def render_page(
     snapshot: Path | None = None,
 ) -> str:
     rendering_inputs = snapshot or ensure_snapshot(root).path
-    ios = target.platform in {"iphone", "ipad"}
-    page_path = rendering_inputs / ("iOS" if ios else "Mac") / "page.html"
+    page_path = rendering_inputs / ("iOS" if target.ios else "Mac") / "page.html"
     required = [
         page_path,
         rendering_inputs / "Shared" / "core.css",
@@ -164,17 +177,20 @@ def render_page(
 
     skeleton = SCRIPT_RE.sub("", page_path.read_text(encoding="utf-8"))
     stylesheet = (theme / "stylesheet.css").read_text(encoding="utf-8")
-    font_size = float(fixture.get("font_size", 17)) * target.scale
-    stylesheet += f"\n.nnw-preview-large-text {{ font-size: {target.scale:g}em; }}\n"
+    # styleSubstitutions() is empty on macOS, so the macro must stay literal there.
+    style_substitutions: dict[str, str] = {}
+    if target.ios:
+        size = LARGE_DYNAMIC_TYPE_SIZE if target.large_text else DEFAULT_DYNAMIC_TYPE_SIZE
+        style_substitutions["font-size"] = f"{float(fixture.get('font_size', size)):g}"
     style = substitute(
         (rendering_inputs / "Shared" / "core.css").read_text(encoding="utf-8")
         + "\n"
         + stylesheet,
-        {"font-size": f"{font_size:g}"},
+        style_substitutions,
     )
 
     template = (theme / "template.html").read_text(encoding="utf-8")
-    body = substitute(template, _fixture_mapping(fixture, ios=ios, scale=target.scale))
+    body = substitute(template, _fixture_mapping(fixture, target))
     if not target.theme_scripts:
         body = SCRIPT_RE.sub("", body)
     page = substitute(
@@ -235,7 +251,7 @@ title="Sandboxed {html.escape(target.slug)} theme preview"></iframe></body></htm
         (views / f"{target.slug}.html").write_text(viewer, encoding="utf-8")
         shot = f"screenshots/{target.slug}.png"
         labels = [target.fixture, target.platform, target.appearance]
-        if target.scale != 1:
+        if target.large_text:
             labels.append("large text")
         if not target.theme_scripts:
             labels.append("article JavaScript off")

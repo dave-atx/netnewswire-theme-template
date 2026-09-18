@@ -37,10 +37,6 @@ class ValidationReport:
     errors: list[str] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)
 
-    @property
-    def ok(self) -> bool:
-        return not self.errors
-
     def require_ok(self) -> None:
         if self.errors:
             raise ThemeError("theme validation failed:\n- " + "\n- ".join(self.errors))
@@ -53,13 +49,12 @@ class _ResourceParser(HTMLParser):
 
     def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
         values = {name.lower(): value or "" for name, value in attrs}
-        if tag.lower() == "script" and "src" in values:
-            self.references.append(("script", "src", values["src"]))
-        if tag.lower() == "link" and values.get("rel", "").lower() == "stylesheet":
+        tag = tag.lower()
+        if tag == "link" and values.get("rel", "").lower() == "stylesheet":
             self.references.append(("stylesheet", "href", values.get("href", "")))
         for attribute in ("src", "poster"):
             if attribute in values:
-                self.references.append((tag.lower(), attribute, values[attribute]))
+                self.references.append((tag, attribute, values[attribute]))
 
 
 def _is_remote(value: str) -> bool:
@@ -125,19 +120,12 @@ def validate_source(theme: Path, *, allow_remote_media: bool = False) -> Validat
     report.errors.extend(metadata_report.errors)
     report.warnings.extend(metadata_report.warnings)
 
-    for filename in ("template.html", "stylesheet.css"):
-        path = theme / filename
-        if (
-            path.is_file()
-            and "[[" not in path.read_text(encoding="utf-8")
-            and filename == "template.html"
-        ):
-            report.warnings.append("template.html contains no NetNewsWire macros")
-
     template_path = theme / "template.html"
     if template_path.is_file():
         parser = _ResourceParser()
         template = template_path.read_text(encoding="utf-8")
+        if "[[" not in template:
+            report.warnings.append("template.html contains no NetNewsWire macros")
         parser.feed(template)
         if re.search(r"<style\b[^>]*>.*?@import\s", template, re.DOTALL | re.IGNORECASE):
             report.errors.append("CSS @import is not allowed in template.html")
@@ -187,7 +175,9 @@ def validate_source(theme: Path, *, allow_remote_media: bool = False) -> Validat
 def validate_archive(content: bytes, asset_name: str) -> ValidationReport:
     report = ValidationReport()
     if not asset_name.endswith(".nnwtheme.zip"):
+        # Everything below derives the bundle name from this suffix.
         report.errors.append("release asset name must end in .nnwtheme.zip")
+        return report
     if len(content) > MAX_ASSET_BYTES:
         report.errors.append("release asset exceeds the 25 MiB compressed limit")
         return report

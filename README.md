@@ -19,6 +19,14 @@ It is an independent community project and is not affiliated with or endorsed by
 NetNewsWire. The theme file format is documented in NetNewsWire’s official
 [Themes technote](https://github.com/Ranchero-Software/NetNewsWire/blob/main/Technotes/Themes.md).
 
+## Create your repository
+
+This is a GitHub template repository. Choose **Use this template → Create a new
+repository**, then work in your copy.
+
+Do not fork it. A fork produces a working theme, but the marketplace skips forks, so
+a forked theme is never discovered. Initialization warns you if it detects one.
+
 ## Start with an agent
 
 Give your agent this prompt whether or not you have already opened the repository:
@@ -33,7 +41,8 @@ ask again before creating a GitHub release or making another external change.
 
 ## Start without an agent
 
-On macOS, install the two tools and run the guided initializer:
+After creating your repository from the template, install the two tools on macOS and
+run the guided initializer:
 
 ```sh
 brew install uv playwright-cli

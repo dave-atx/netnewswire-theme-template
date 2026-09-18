@@ -20,8 +20,9 @@ def _run(arguments: list[str], *, check: bool = True) -> subprocess.CompletedPro
         return subprocess.run(arguments, check=check, capture_output=True, text=True)
     except FileNotFoundError as error:
         raise ThemeError(
-            "playwright-cli is not installed; run `uv run nnw-theme setup` "
-            "(manual macOS users can first run `brew install playwright-cli`)"
+            "playwright-cli is not installed; install it first (on macOS run "
+            "`brew install playwright-cli`), then run `uv run nnw-theme setup` "
+            "to add the WebKit browser"
         ) from error
     except subprocess.CalledProcessError as error:
         detail = (error.stderr or error.stdout).strip()
@@ -85,16 +86,19 @@ def serve(directory: Path):
 
 
 def _javascript(url: str, target: RenderTarget, screenshot: Path) -> str:
-    allowed_origin = url.split("/", 3)[:3]
-    origin = "/".join(allowed_origin)
+    origin = "/".join(url.split("/", 3)[:3]).lower()
     return f"""async page => {{
   const blocked = [];
   const pageErrors = [];
   page.on('pageerror', error => pageErrors.push(String(error)));
   await page.context().route('**/*', async route => {{
     const requestURL = route.request().url();
-    if (requestURL.startsWith({json.dumps(origin)}) || requestURL.startsWith('data:'))
-      return route.continue();
+    if (requestURL.startsWith('data:')) return route.continue();
+    // Whole-origin match: a prefix test would accept 127.0.0.1:PORT.example.net.
+    // No URL constructor in this sandbox, so match the authority explicitly.
+    const match = /^([a-z][a-z0-9+.-]*:)\\/\\/([^/?#]*)/i.exec(requestURL);
+    const requestOrigin = match ? (match[1] + '//' + match[2]).toLowerCase() : null;
+    if (requestOrigin === {json.dumps(origin)}) return route.continue();
     blocked.push(requestURL);
     return route.abort('blockedbyclient');
   }});
@@ -107,7 +111,8 @@ def _javascript(url: str, target: RenderTarget, screenshot: Path) -> str:
     return {{
       article: Boolean(document.querySelector('.articleBody')),
       textLength: (document.querySelector('.articleBody')?.innerText || '').trim().length,
-      unresolved: document.documentElement.innerHTML.includes('[['),
+      // Body only: macOS CSS legitimately keeps the font-size macro literal.
+      unresolved: document.body.innerHTML.includes('[['),
       overflow: root.scrollWidth > root.clientWidth + 1,
       brokenImages: [...document.images]
         .filter(image => image.complete && image.naturalWidth === 0)
