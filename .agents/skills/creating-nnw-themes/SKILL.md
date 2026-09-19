@@ -5,10 +5,14 @@ description: Create, restyle, preview, test, package, or publish the NetNewsWire
 
 # Create NetNewsWire themes
 
-Work on the single root-level `*.nnwtheme` bundle. If
-`.nnw-theme-uninitialized` exists, run the guided `uv run nnw-theme init` before
-design work; let the person approve the permanent identifier even when other identity
-details are already known.
+The upstream repository is a GitHub template. Work in the person's own repository made via
+**Use this template**, not in the upstream template or a fork. If they already have
+their own copy open, use it. Otherwise, help them create one from
+`dave-atx/netnewswire-theme-template` if you can, or ask them to create and open it;
+confirm before creating a GitHub repository. Then work on its single root-level
+`*.nnwtheme` bundle. If `.nnw-theme-uninitialized` exists, run the guided
+`uv run nnw-theme init` before design work; let the person approve the permanent
+identifier even when other identity details are already known.
 
 Collect or infer a compact design brief: mood, typography, color direction, and any
 specific reading needs. Prefer changing the CSS variables and rules in

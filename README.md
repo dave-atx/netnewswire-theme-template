@@ -19,36 +19,50 @@ It is an independent community project and is not affiliated with or endorsed by
 NetNewsWire. The theme file format is documented in NetNewsWire’s official
 [Themes technote](https://github.com/Ranchero-Software/NetNewsWire/blob/main/Technotes/Themes.md).
 
-## Create your repository
+## Create your theme repository
 
-This is a GitHub template repository. Choose **Use this template → Create a new
-repository**, then work in your copy.
+The [original repository](https://github.com/dave-atx/netnewswire-theme-template)
+is a GitHub template, not a theme to install as-is. On its GitHub page, choose
+**Use this template → Create a new repository**. Give your new repository a name,
+then work in that repository. If you are reading this in a repository already
+created from the template, skip this step.
 
-Do not fork it. A fork produces a working theme, but the marketplace skips forks, so
-a forked theme is never discovered. Initialization warns you if it detects one.
+Do not use **Fork** or simply clone the original template as your theme repository:
+the marketplace skips forks, and a clone still points at the template repository.
+Initialization warns if it detects a fork. You can choose whether your new repository
+is listed in the marketplace during setup.
 
 ## Start with an agent
 
-Give your agent this prompt whether or not you have already opened the repository:
+Give your agent this one prompt, whether you are in your own repository or starting
+from the template's GitHub page:
 
-> Help me create a NetNewsWire theme using
-> `github.com/dave-atx/netnewswire-theme-template`. Use the current copy if it is
-> already open; otherwise set one up. Guide me through the choices. I want
-> [describe the mood, colors, typography, or reading experience].
+> Help me make a NetNewsWire theme with `dave-atx/netnewswire-theme-template`.
+> Guide me through setup and design. I want [describe the look or reading experience].
 
 The agent will ask you to approve the theme’s permanent identifier. It should also
 ask again before creating a GitHub release or making another external change.
 
 ## Start without an agent
 
-After creating your repository from the template, install the two tools on macOS and
-run the guided initializer:
+After creating your repository from the template, clone **your** repository and enter
+it (replace `YOUR-NAME/YOUR-THEME` with its GitHub path):
+
+```sh
+git clone https://github.com/YOUR-NAME/YOUR-THEME.git
+cd YOUR-THEME
+```
+
+On macOS, install the two tools and run the guided initializer:
 
 ```sh
 brew install uv playwright-cli
 uv run nnw-theme init
 uv run nnw-theme preview
 ```
+
+Only run `init` if `.nnw-theme-uninitialized` exists. If your copy is already
+initialized, go straight to `uv run nnw-theme preview`.
 
 Linux is supported too; install `uv` and `playwright-cli` with their documented
 package-manager instructions, then use the same commands. The initializer supplies
