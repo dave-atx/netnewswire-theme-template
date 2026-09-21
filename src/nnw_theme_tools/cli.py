@@ -17,6 +17,8 @@ from urllib.parse import urlparse
 from .browser import check_pages, serve, setup_webkit
 from .package import build_archive
 from .project import (
+    IDENTITY_END,
+    IDENTITY_START,
     PLACEHOLDER_MARKER,
     ThemeError,
     find_root,
@@ -26,9 +28,7 @@ from .project import (
 )
 from .render import RenderTarget, check_targets, normal_targets, render_site
 from .snapshot import ensure_snapshot
-
-IDENTITY_START = "<!-- nnw-theme-identity:start -->"
-IDENTITY_END = "<!-- nnw-theme-identity:end -->"
+from .update import update
 
 
 def _slug(value: str) -> str:
@@ -448,6 +448,17 @@ def parser() -> argparse.ArgumentParser:
     bump = commands.add_parser("bump", help="increase the plist Version integer")
     bump.add_argument("--yes", action="store_true")
     bump.set_defaults(function=command_bump)
+
+    update_parser = commands.add_parser(
+        "update", help="refresh tooling, workflows, and docs from the upstream template"
+    )
+    update_parser.add_argument(
+        "--ref", help="template branch, tag, or commit (default: newest release tag)"
+    )
+    update_parser.add_argument("--dry-run", action="store_true")
+    update_parser.set_defaults(
+        function=lambda args: update(find_root(), args.ref, dry_run=args.dry_run)
+    )
 
     marketplace = commands.add_parser("marketplace", help="manage marketplace participation")
     marketplace_commands = marketplace.add_subparsers(dest="marketplace_command", required=True)

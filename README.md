@@ -133,10 +133,35 @@ Marketplace metadata remains advisory: private repositories and repositories wit
 the topic can still publish valid themes. See the
 [publishing guide](.agents/skills/creating-nnw-themes/references/publishing.md).
 
+## Update the tooling
+
+Repositories made from the template keep their own copy of its tooling. To pull in
+later fixes, commit your work, then run:
+
+```sh
+uv run nnw-theme update --dry-run   # list what would change
+uv run nnw-theme update
+```
+
+By default this installs the template's newest release tag (such as `v1.2.0`). Use
+`--ref` to pick a specific tag, branch, or commit instead.
+It updates the tooling, tests, workflows, agent guidance, and the README below your
+theme's heading. It also adds new fixtures and missing `.gitignore` entries. It never
+touches your `.nnwtheme` bundle, your screenshot, or fixtures you already have, and it
+keeps workflows you added. Review the result with `git diff`, run
+`uv run nnw-theme check`, and commit.
+
+Copies made before `update` existed can bootstrap it once:
+
+```sh
+uvx --from git+https://github.com/dave-atx/netnewswire-theme-template nnw-theme update
+```
+
 ## Useful commands
 
 ```text
 uv run nnw-theme init                  Personalize a fresh template
+uv run nnw-theme update [--dry-run]    Refresh tooling from the upstream template
 uv run nnw-theme setup                 Download inputs and install or locate WebKit
 uv run nnw-theme preview [--no-open]   Rebuilding local preview
 uv run nnw-theme render [fixture ...]  Generate the static gallery only

@@ -12,7 +12,9 @@ new theme repository. Confirm with the user before creating a GitHub repository.
 In the user's theme repository, run `uv run nnw-theme init` if
 `.nnw-theme-uninitialized` exists; let the user confirm the permanent theme
 identifier. Prefer CSS changes; change `template.html` only when the requested
-structure or behavior requires it.
+structure or behavior requires it. In a theme repository, fix tooling upstream rather
+than locally: `uv run nnw-theme update` replaces it. Run `update` only when the user
+asks, and commit its changes separately from theme changes.
 
 Use `uv` for every Python command and Python 3.14. After changing Python, run:
 

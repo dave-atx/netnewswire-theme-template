@@ -7,6 +7,8 @@ from typing import Any
 
 REQUIRED_THEME_FILES = ("Info.plist", "template.html", "stylesheet.css")
 PLACEHOLDER_MARKER = ".nnw-theme-uninitialized"
+IDENTITY_START = "<!-- nnw-theme-identity:start -->"
+IDENTITY_END = "<!-- nnw-theme-identity:end -->"
 
 
 class ThemeError(RuntimeError):
