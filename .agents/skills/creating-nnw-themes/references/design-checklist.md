@@ -8,7 +8,8 @@ prescribed aesthetic.
   contrast in both light and dark appearance.
 - Check long title/byline wrapping on macOS, iPhone, and iPad.
 - Check lists, quotations, inline code, preformatted code, tables, captions, media,
-  and footnotes in the kitchen-sink article.
+  and footnotes in the kitchen-sink article and any fixtures the theme added. `check`
+  verifies footnote popovers and marker consistency; judge how they look.
 - Confirm wide media and long tokens do not create document-level horizontal scroll.
 - Check large-text macOS and iPhone renders for clipping, overlap, and lost hierarchy.
   These exercise the real mechanisms: a macOS size class and an iOS Dynamic Type size.

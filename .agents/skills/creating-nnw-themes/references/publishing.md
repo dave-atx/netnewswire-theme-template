@@ -13,7 +13,9 @@ Publishing is manual: use **Actions → Publish theme → Run workflow** or an e
 explicitly authorized GitHub CLI action. Tag pushes do not publish. The workflow uses
 the current default-branch HEAD, refuses an existing tag/release, compares identity
 and version to the previous stable release, and uploads one
-`<Name>.nnwtheme.zip` asset. Notes are optional.
+`<Name>.nnwtheme.zip` asset. Notes are optional; when they are empty and
+`.github/cliff.toml` exists, git-cliff generates them from the commits since the
+previous tag.
 
 Marketplace participation is optional. Automatic discovery expects a public,
 non-archived, non-fork repository; the `netnewswire-theme` or `netnewswire` topic; a

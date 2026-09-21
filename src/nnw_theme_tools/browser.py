@@ -7,13 +7,16 @@ import subprocess
 import sys
 import threading
 import uuid
+from collections.abc import Mapping
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from typing import Protocol
+from typing import Any, Protocol
 from urllib.parse import quote
 
 from .project import ThemeError
 from .render import RenderTarget
+
+FOOTNOTE_CHECK = (Path(__file__).parent / "footnotes.js").read_text(encoding="utf-8")
 
 
 def _run(arguments: list[str], *, check: bool = True) -> subprocess.CompletedProcess[str]:
@@ -89,7 +92,9 @@ def serve(directory: Path):
         server.server_close()
 
 
-def _javascript(url: str, target: RenderTarget, screenshot: Path) -> str:
+def _javascript(
+    url: str, target: RenderTarget, screenshot: Path, footnotes: Mapping[str, Any]
+) -> str:
     origin = "/".join(url.split("/", 3)[:3]).lower()
     return f"""async page => {{
   const blocked = [];
@@ -115,8 +120,9 @@ def _javascript(url: str, target: RenderTarget, screenshot: Path) -> str:
     return {{
       article: Boolean(document.querySelector('.articleBody')),
       textLength: (document.querySelector('.articleBody')?.innerText || '').trim().length,
-      // Body only: macOS CSS legitimately keeps the font-size macro literal.
-      unresolved: document.body.innerHTML.includes('[['),
+      // Body only: macOS CSS legitimately keeps the font-size macro literal. Match
+      // whole macro names, so a theme script's regex such as /[[(]/ is no macro.
+      unresolved: /\\[\\[[A-Za-z0-9_-]+\\]\\]/.test(document.body.innerHTML),
       overflow: root.scrollWidth > root.clientWidth + 1,
       brokenImages: [...document.images]
         .filter(image => image.complete && image.naturalWidth === 0)
@@ -124,7 +130,9 @@ def _javascript(url: str, target: RenderTarget, screenshot: Path) -> str:
       title: document.title
     }};
   }});
-  return JSON.stringify({{...state, blocked, pageErrors}});
+  // Last: it clicks footnotes open, so it must not disturb the screenshot.
+  const footnotes = await page.evaluate({FOOTNOTE_CHECK}, {json.dumps(dict(footnotes))});
+  return JSON.stringify({{...state, footnotes, blocked, pageErrors}});
 }}"""
 
 
@@ -140,6 +148,24 @@ def _parse_state(output: str) -> dict[str, object]:
     return value
 
 
+def _failures(state: dict[str, Any]) -> list[str]:
+    failures = []
+    if not state["article"] or state["textLength"] < 40:
+        failures.append("article content is missing or unreadable")
+    if state["unresolved"]:
+        failures.append("unresolved theme macro")
+    if state["overflow"]:
+        failures.append("horizontal document overflow")
+    if state["brokenImages"]:
+        failures.append(f"broken images: {state['brokenImages']}")
+    failures.extend(state.get("footnotes") or [])
+    if state["blocked"]:
+        failures.append(f"external requests: {state['blocked']}")
+    if state["pageErrors"]:
+        failures.append(f"page errors: {state['pageErrors']}")
+    return failures
+
+
 class CheckProgress(Protocol):
     def status(self, message: str) -> None: ...
     def start(self, index: int, target: RenderTarget) -> None: ...
@@ -147,9 +173,16 @@ class CheckProgress(Protocol):
 
 
 def check_pages(
-    site: Path, targets: list[RenderTarget], progress: CheckProgress | None = None
+    site: Path,
+    targets: list[RenderTarget],
+    progress: CheckProgress | None = None,
+    expectations: Mapping[str, Mapping[str, Any]] | None = None,
 ) -> dict[str, list[str]]:
-    """Each target's slug mapped to its failures (empty when it passed)."""
+    """Each target's slug mapped to its failures (empty when it passed).
+
+    expectations maps a fixture name to its [expect.footnotes] table. They describe
+    the theme's own footnote handling, so they are skipped with theme scripts off.
+    """
     results: dict[str, list[str]] = {}
     screenshots = site / "screenshots"
     screenshots.mkdir(parents=True, exist_ok=True)
@@ -164,29 +197,19 @@ def check_pages(
                     progress.start(index, target)
                 url = f"{base_url}/pages/{quote(target.slug)}.html"
                 screenshot = screenshots / f"{target.slug}.png"
+                footnotes = (expectations or {}).get(target.fixture, {})
+                if not target.theme_scripts:
+                    footnotes = {}
                 result = _run(
                     [
                         "playwright-cli",
                         "--raw",
                         f"-s={session}",
                         "run-code",
-                        _javascript(url, target, screenshot),
+                        _javascript(url, target, screenshot, footnotes),
                     ]
                 )
-                state = _parse_state(result.stdout)
-                target_failures = []
-                if not state["article"] or state["textLength"] < 40:
-                    target_failures.append("article content is missing or unreadable")
-                if state["unresolved"]:
-                    target_failures.append("unresolved theme macro")
-                if state["overflow"]:
-                    target_failures.append("horizontal document overflow")
-                if state["brokenImages"]:
-                    target_failures.append(f"broken images: {state['brokenImages']}")
-                if state["blocked"]:
-                    target_failures.append(f"external requests: {state['blocked']}")
-                if state["pageErrors"]:
-                    target_failures.append(f"page errors: {state['pageErrors']}")
+                target_failures = _failures(_parse_state(result.stdout))
                 results[target.slug] = target_failures
                 if progress:
                     progress.finish(index, target, target_failures)

@@ -23,10 +23,19 @@ from .project import (
     ThemeError,
     find_root,
     find_theme,
+    footnote_expectations,
+    read_fixture,
     read_plist,
     write_plist,
 )
-from .render import RenderTarget, check_targets, normal_targets, render_site, write_gallery
+from .render import (
+    RenderTarget,
+    check_targets,
+    extra_fixtures,
+    normal_targets,
+    render_site,
+    write_gallery,
+)
 from .snapshot import ensure_snapshot
 from .update import update
 
@@ -265,7 +274,7 @@ def command_setup(_args: argparse.Namespace) -> None:
 def command_render(args: argparse.Namespace) -> None:
     root = find_root()
     theme = find_theme(root)
-    targets = normal_targets()
+    targets = normal_targets(extra_fixtures(root))
     if args.fixtures:
         requested = set(args.fixtures)
         targets = [target for target in targets if target.fixture in requested]
@@ -274,6 +283,15 @@ def command_render(args: argparse.Namespace) -> None:
             raise ThemeError(f"unknown fixture(s): {', '.join(sorted(unknown))}")
     site = render_site(root, theme, targets)
     print(site / "index.html")
+
+
+def _expectations(root: Path, targets: list[RenderTarget]) -> dict[str, dict[str, Any]]:
+    return {
+        name: footnote_expectations(
+            read_fixture(root / "fixtures" / f"{name}.toml"), f"fixtures/{name}.toml"
+        )
+        for name in dict.fromkeys(target.fixture for target in targets)
+    }
 
 
 class _CheckProgress:
@@ -318,7 +336,8 @@ def _offer_to_open(index: Path, choice: bool | None) -> None:
 def command_check(args: argparse.Namespace) -> None:
     root = find_root()
     theme = find_theme(root)
-    targets = check_targets()
+    targets = check_targets(extra_fixtures(root))
+    expectations = _expectations(root, targets)
     progress = _CheckProgress(len(targets))
     progress.status("Validating and packaging the theme…")
     archive, warnings = build_archive(
@@ -329,7 +348,7 @@ def command_check(args: argparse.Namespace) -> None:
     progress.status(f"Rendering {len(targets)} pages…")
     site = render_site(root, theme, targets)
     try:
-        results = check_pages(site, targets, progress)
+        results = check_pages(site, targets, progress, expectations)
     finally:
         progress.done()
     write_gallery(site, theme.stem, targets, results)
@@ -365,7 +384,7 @@ def _project_mtime(root: Path) -> int:
 def command_preview(args: argparse.Namespace) -> None:
     root = find_root()
     theme = find_theme(root)
-    site = render_site(root, theme, normal_targets())
+    site = render_site(root, theme, normal_targets(extra_fixtures(root)))
     with serve(site) as url:
         print(f"Preview: {url}")
         if not args.no_open:
@@ -377,30 +396,34 @@ def command_preview(args: argparse.Namespace) -> None:
                 time.sleep(1)
                 current = _project_mtime(root)
                 if current != previous:
-                    render_site(root, theme, normal_targets())
+                    render_site(root, theme, normal_targets(extra_fixtures(root)))
                     previous = current
                     print("Rebuilt preview.")
         except KeyboardInterrupt:
             print("\nPreview stopped.")
 
 
-def _select_target(args: argparse.Namespace) -> RenderTarget:
-    for target in normal_targets():
+def _select_target(root: Path, args: argparse.Namespace) -> RenderTarget:
+    targets = normal_targets(extra_fixtures(root))
+    if args.fixture not in {target.fixture for target in targets}:
+        raise ThemeError(f"unknown fixture: {args.fixture}")
+    for target in targets:
         if (
             target.fixture == args.fixture
             and target.platform == args.platform
             and target.appearance == args.appearance
         ):
             return target
-    raise ThemeError("invalid screenshot target")
+    raise ThemeError(f"{args.fixture} is checked on Mac and iPhone only")
 
 
 def command_screenshot(args: argparse.Namespace) -> None:
     root = find_root()
     theme = find_theme(root)
-    target = _select_target(args)
+    target = _select_target(root, args)
     site = render_site(root, theme, [target])
-    failures = check_pages(site, [target])[target.slug]
+    expectations = _expectations(root, [target])
+    failures = check_pages(site, [target], expectations=expectations)[target.slug]
     if failures:
         raise ThemeError("screenshot checks failed:\n- " + "\n- ".join(failures))
     source = site / "screenshots" / f"{target.slug}.png"
@@ -410,6 +433,31 @@ def command_screenshot(args: argparse.Namespace) -> None:
         destination.parent.mkdir(exist_ok=True)
         shutil.copyfile(source, destination)
         print(f"Promoted marketplace screenshot: {destination}")
+
+
+def command_capture(_args: argparse.Namespace) -> None:
+    script = find_root() / "src" / "nnw_theme_tools" / "nnwdump.py"
+    print(
+        f"""Capture a real article as a fixture from a NetNewsWire debug build (needs Xcode).
+
+1. Clone https://github.com/Ranchero-Software/NetNewsWire and open it in Xcode.
+   In Shared/Article Rendering/ArticleRenderer.swift, set a breakpoint on the
+   `return d` line at the end of articleSubstitutions(), then run the app.
+2. Select the article to capture. When the breakpoint stops, load the command
+   in the debugger console (once per debug session):
+
+   command script import {script}
+
+3. Write the fixture, then let the app continue:
+
+   nnwdump fixtures/my-article.toml
+   continue
+
+4. Preview it with `uv run nnw-theme render my-article`.
+
+nnwdump embeds the feed's real icon; pass --no-icon to keep the generated one.
+A relative path is resolved against this repository, not the debugger's folder."""
+    )
 
 
 def command_bump(args: argparse.Namespace) -> None:
@@ -546,11 +594,13 @@ def parser() -> argparse.ArgumentParser:
         commands,
         "check",
         "release gate: package and test every case in WebKit",
-        "Validate and package the theme, then render all 16 cases (both fixtures on Mac, "
-        "iPhone, and iPad in light and dark, plus large text and Article JavaScript off) "
-        "in WebKit, screenshot each, and fail on missing content, unresolved macros, "
-        "overflow, broken images, external requests, or JavaScript errors. Results go "
-        "into the gallery in build/preview/.",
+        "Validate and package the theme, then render 16 cases (the article and "
+        "kitchen-sink fixtures on Mac, iPhone, and iPad in light and dark, plus large "
+        "text and Article JavaScript off) and four more for each fixture you add (Mac "
+        "and iPhone, light and dark) in WebKit. Screenshot each, and fail on missing "
+        "content, unresolved macros, overflow, broken images, footnotes that do not "
+        "open, external requests, or JavaScript errors. Results go into the gallery in "
+        "build/preview/.",
     )
     _add_common_remote_flag(check)
     check.add_argument(
@@ -568,7 +618,7 @@ def parser() -> argparse.ArgumentParser:
         "Render and check a single case in WebKit and save its full-page screenshot. "
         "With --promote, it becomes screenshots/theme-preview.png, the marketplace card.",
     )
-    screenshot.add_argument("--fixture", choices=("article", "kitchen-sink"), default="article")
+    screenshot.add_argument("--fixture", default="article", help="fixture name")
     screenshot.add_argument("--platform", choices=("mac", "iphone", "ipad"), default="mac")
     screenshot.add_argument("--appearance", choices=("light", "dark"), default="light")
     screenshot.add_argument(
@@ -584,6 +634,13 @@ def parser() -> argparse.ArgumentParser:
     package.add_argument("--output-dir", default="dist")
     _add_common_remote_flag(package)
     package.set_defaults(function=command_package)
+
+    capture = _command(
+        commands,
+        "capture",
+        "explain how to capture a real article from NetNewsWire as a fixture",
+    )
+    capture.set_defaults(function=command_capture)
 
     bump = _command(commands, "bump", "increase the Info.plist Version before a release")
     bump.add_argument("--yes", action="store_true", help="skip the confirmation")

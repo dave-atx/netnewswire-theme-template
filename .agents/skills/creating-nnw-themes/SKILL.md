@@ -18,7 +18,9 @@ Collect or infer a compact design brief: mood, typography, color direction, and 
 specific reading needs. Prefer changing the CSS variables and rules in
 `stylesheet.css`. Edit `template.html` only when the requested structure or behavior
 needs it. For format constraints and macro behavior, read
-[references/theme-format.md](references/theme-format.md).
+[references/theme-format.md](references/theme-format.md). To preview content the
+starter articles lack, such as a real feed's markup or footnotes, add a fixture as
+described in [references/fixtures.md](references/fixtures.md).
 
 Iterate with this loop:
 

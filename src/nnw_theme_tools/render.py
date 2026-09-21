@@ -5,6 +5,7 @@ import hashlib
 import html
 import re
 import shutil
+from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -14,6 +15,9 @@ from .snapshot import ensure_snapshot
 
 MACRO_RE = re.compile(r"\[\[([a-zA-Z0-9_-]+)\]\]")
 SCRIPT_RE = re.compile(r"<script\b[^>]*>.*?</script>", re.DOTALL | re.IGNORECASE)
+# A whole <img> or <source> tag; quoted attribute values may contain ">".
+MEDIA_TAG_RE = re.compile(r"""<(img|source)\b((?:[^>"']|"[^"]*"|'[^']*')*)>""", re.IGNORECASE)
+ATTRIBUTE_RE = re.compile(r"""([^\s"'=<>/]+)(?:\s*=\s*("[^"]*"|'[^']*'|[^\s"'=<>`]+))?""")
 TEMPLATE_KEYS = (
     "title",
     "preferred_link",
@@ -48,11 +52,17 @@ window.webkit = window.webkit || {messageHandlers: new Proxy({}, {
   get: function() { return {postMessage: function() {}}; }
 })};
 """
+# The iOS app injects the feed icon's localized accessibility label for main_ios.js
+# (WebViewConfiguration.feedInfoLabelScript); templates with #nnwImageIcon need it.
 IOS_LABEL_SHIM = """
-window.localizedStrings = window.localizedStrings || {};
+const nnwGetFeedInfoLabel = "Get Feed Info";
 """
 PLATFORM_NAMES = {"mac": "Mac", "iphone": "iPhone", "ipad": "iPad"}
+VIEWPORTS = {"mac": (1280, 800), "iphone": (393, 852), "ipad": (834, 1112)}
+# The template's own fixtures get the full matrix and the stress cases. Any other
+# fixture a theme adds is an extra: checked on Mac and iPhone in both appearances.
 FIXTURE_NAMES = {"article": "Article", "kitchen-sink": "Kitchen sink"}
+EXTRA_PLATFORMS = ("mac", "iphone")
 # Gallery sections, in order: (scenario, heading, what the scenario covers).
 SCENARIOS = (
     (
@@ -133,23 +143,36 @@ class RenderTarget:
         return "-".join(parts)
 
 
-def normal_targets() -> list[RenderTarget]:
-    viewports = {
-        "mac": (1280, 800),
-        "iphone": (393, 852),
-        "ipad": (834, 1112),
-    }
+def extra_fixtures(root: Path) -> list[str]:
+    """Fixture names beyond the template's own, in gallery order."""
+    names = sorted(path.stem for path in (root / "fixtures").glob("*.toml"))
+    extras = [name for name in names if name not in FIXTURE_NAMES]
+    reserved = sorted({scenario for scenario, _, _ in SCENARIOS} & set(extras))
+    if reserved:
+        raise ThemeError(
+            f"fixture name(s) reserved for a check scenario: {', '.join(reserved)}; "
+            "rename the file"
+        )
+    return extras
+
+
+def normal_targets(extras: Sequence[str] = ()) -> list[RenderTarget]:
     return [
-        RenderTarget(fixture, platform, appearance, *viewports[platform])
-        for fixture in ("article", "kitchen-sink")
-        for platform in ("mac", "iphone", "ipad")
+        RenderTarget(fixture, platform, appearance, *VIEWPORTS[platform])
+        for fixture in FIXTURE_NAMES
+        for platform in PLATFORM_NAMES
+        for appearance in ("light", "dark")
+    ] + [
+        RenderTarget(fixture, platform, appearance, *VIEWPORTS[platform])
+        for fixture in extras
+        for platform in EXTRA_PLATFORMS
         for appearance in ("light", "dark")
     ]
 
 
-def check_targets() -> list[RenderTarget]:
+def check_targets(extras: Sequence[str] = ()) -> list[RenderTarget]:
     return [
-        *normal_targets(),
+        *normal_targets(extras),
         RenderTarget("kitchen-sink", "mac", "light", 1280, 800, large_text=True),
         RenderTarget("kitchen-sink", "iphone", "light", 393, 852, large_text=True),
         RenderTarget("article", "mac", "light", 1280, 800, theme_scripts=False),
@@ -180,13 +203,58 @@ def _avatar_data_uri(title: str) -> str:
     return f"data:image/svg+xml;base64,{encoded}"
 
 
+def _fetches(url: str) -> bool:
+    """Whether a URL would load over the network, including relative to the base URL."""
+    url = url.strip().lower()
+    return bool(url) and not url.startswith(("data:", "#"))
+
+
+def _placeholder(width: str | None, height: str | None) -> str:
+    size = [int(value) if value and value.isdigit() else 0 for value in (width, height)]
+    width_px, height_px = size if all(size) else (1600, 900)
+    svg = (
+        f'<svg xmlns="http://www.w3.org/2000/svg" width="{width_px}" height="{height_px}">'
+        '<rect width="100%" height="100%" fill="#8a8f98" fill-opacity=".35"/></svg>'
+    )
+    return f"data:image/svg+xml;base64,{base64.b64encode(svg.encode()).decode()}"
+
+
+def offline_media(body: str) -> str:
+    """Swap a fixture's network images for same-size placeholders.
+
+    Previews never touch the network, so a captured article's images would otherwise
+    render broken. Each <img> keeps its attributes and width/height (16:9 when it has
+    none), so layout matches; a <source> that would fetch is dropped for its <img>.
+    """
+
+    def replace(match: re.Match[str]) -> str:
+        tag = match.group(1).lower()
+        attributes = ATTRIBUTE_RE.findall(match.group(2))
+        values = {name.lower(): html.unescape(value.strip("\"'")) for name, value in attributes}
+        srcset = any(_fetches(part) for part in values.get("srcset", "").split(","))
+        if not (srcset or _fetches(values.get("src", ""))):
+            return match.group(0)
+        if tag == "source":
+            return ""
+        kept = "".join(
+            f" {name}={value}" if value else f" {name}"
+            for name, value in attributes
+            if name.lower() not in {"src", "srcset", "sizes"}
+        )
+        placeholder = _placeholder(values.get("width"), values.get("height"))
+        return f'<{match.group(1)}{kept} src="{placeholder}">'
+
+    return MEDIA_TAG_RE.sub(replace, body)
+
+
 def _fixture_mapping(fixture: dict[str, Any], target: RenderTarget) -> dict[str, str]:
     mapping = {key: str(fixture.get(key, "")) for key in TEMPLATE_KEYS}
     if not mapping["dateline_style"]:
         mapping["dateline_style"] = (
             "articleDateline" if mapping["title"] else "articleDatelineTitle"
         )
-    if not mapping["avatar_src"] or mapping["avatar_src"].startswith("nnwImageIcon:"):
+    mapping["body"] = offline_media(mapping["body"])
+    if not mapping["avatar_src"] or _fetches(mapping["avatar_src"]):
         mapping["avatar_src"] = _avatar_data_uri(mapping["feed_link_title"])
     if target.ios:
         # NetNewsWire leaves this macro unresolved on iOS; empty renders the same.
@@ -377,7 +445,7 @@ def write_gallery(
     sections = []
     known = {scenario for scenario, _, _ in SCENARIOS}
     extra = [
-        (target.scenario, FIXTURE_NAMES.get(target.fixture, target.fixture), "")
+        (target.scenario, target.fixture, f"Your fixtures/{target.fixture}.toml.")
         for target in targets
         if target.scenario not in known
     ]

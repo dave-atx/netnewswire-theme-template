@@ -169,17 +169,48 @@ uv run nnw-theme check
 
 This validates and packages the exact theme, then checks 16 WebKit renders: two
 articles across macOS, iPhone, iPad, light and dark appearances, plus large-text and
-Article-JavaScript-off cases. External requests are blocked. Results are written to
-`build/preview/`, a gallery grouped by scenario that marks each case passed or failed
-and lists failures first; the release ZIP is written to `build/release/`. In a
-terminal, `check` shows its progress and offers to open the gallery when it finishes.
+Article-JavaScript-off cases. Each fixture you add is checked on macOS and iPhone in
+both appearances as well. Every footnote marker must open NetNewsWire's popover with
+its note, stay legible, and match the others. External requests are blocked. Results
+are written to `build/preview/`, a gallery grouped by scenario that marks each case
+passed or failed and lists failures first; the release ZIP is written to
+`build/release/`. In a terminal, `check` shows its progress and offers to open the
+gallery when it finishes.
 
 After a successful default-branch check, the Pages workflow publishes the same
 sandboxed gallery. Pull requests and failed checks retain it as a downloadable
 diagnostic artifact; Pages is the normal hosted preview.
 
 For each new repository, enable the included workflow once under **Settings → Pages →
-Build and deployment → Source → GitHub Actions**.
+Build and deployment → Source → GitHub Actions**. If Pages already publishes a site of
+yours from a branch, the workflow leaves it alone and keeps the gallery as an artifact.
+
+## Fixtures
+
+Fixtures are the articles every preview and check renders: TOML files in `fixtures/`
+whose keys are the template macros (`title`, `byline`, `feed_link_title`, `body`, and
+so on). `article.toml` and `kitchen-sink.toml` come with the template; add your own
+for the content your theme has to handle, and preview one with
+`uv run nnw-theme render NAME`.
+
+The best fixtures are real articles. `uv run nnw-theme capture` explains how to save
+the one selected in a NetNewsWire debug build, exactly as the app would render it.
+Previews never touch the network, so images that would load from the web appear as
+same-size placeholders.
+
+A fixture can also say what its footnotes must do. `check` then verifies each marker
+by its text, and that the listed links are left as ordinary links:
+
+```toml
+[expect.footnotes]
+plain_links = ["#not-a-footnote"]
+
+[expect.footnotes.notes]
+"1" = "The first note's text."
+"2" = "The second note's text."
+```
+
+Put these tables after the fixture's other keys, including `body`.
 
 Generated gallery screenshots stay ignored under `build/`. Keep the deliberately
 chosen `screenshots/theme-preview.png` in source control: the marketplace uses it for
@@ -192,6 +223,10 @@ request when it changes.
 1. Run `uv run nnw-theme bump` and commit the changed `Info.plist`.
 2. In GitHub, choose **Actions → Publish theme → Run workflow**.
 3. Enter a tag beginning with `v` (for example, `v1.0.0`) and optional notes.
+
+If you leave the notes empty and the repository has a
+[git-cliff](https://git-cliff.org) configuration at `.github/cliff.toml`, the notes
+are generated from the commits since the previous tag.
 
 The workflow releases only the current default-branch commit and refuses a reused
 tag, a non-increasing plist version, or changes to the identifier or bundle filename.
@@ -233,6 +268,7 @@ uv run nnw-theme preview [--no-open]   Live gallery for editing; rebuilds on sav
 uv run nnw-theme render [fixture ...]  Write the gallery once, without checks
 uv run nnw-theme check [--no-open]     Release gate: package and test every case
 uv run nnw-theme screenshot --promote  Check one case and make it the marketplace image
+uv run nnw-theme capture               Explain how to capture a real article as a fixture
 uv run nnw-theme package               Validate and build the release ZIP only
 uv run nnw-theme bump [--yes]          Increase the integer theme version
 uv run nnw-theme marketplace enable    Add the GitHub discovery topic

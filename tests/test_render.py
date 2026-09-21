@@ -1,19 +1,22 @@
 from __future__ import annotations
 
+import base64
 import re
 import tempfile
 import unittest
 from pathlib import Path
 
 from nnw_theme_tools.browser import _parse_state
-from nnw_theme_tools.project import find_theme
+from nnw_theme_tools.project import ThemeError, find_theme
 from nnw_theme_tools.render import (
     DEFAULT_DYNAMIC_TYPE_SIZE,
     DEFAULT_TEXT_SIZE_CLASS,
     LARGE_DYNAMIC_TYPE_SIZE,
     LARGE_TEXT_SIZE_CLASS,
     check_targets,
+    extra_fixtures,
     normal_targets,
+    offline_media,
     render_page,
     render_site,
     substitute,
@@ -55,6 +58,83 @@ class MacroTests(unittest.TestCase):
         self.assertEqual(len(check_targets()), 16)
         self.assertEqual(sum(not target.theme_scripts for target in check_targets()), 2)
         self.assertEqual(sum(target.large_text for target in check_targets()), 2)
+
+
+class ExtraFixtureTests(unittest.TestCase):
+    def fixtures(self, *names: str) -> Path:
+        root = Path(self.enterContext(tempfile.TemporaryDirectory()))
+        (root / "fixtures").mkdir()
+        for name in names:
+            (root / "fixtures" / f"{name}.toml").write_text('title = "T"\n')
+        return root
+
+    def test_added_fixtures_are_extras_in_name_order(self) -> None:
+        root = self.fixtures("kitchen-sink", "zebra", "article", "footnotes")
+        self.assertEqual(extra_fixtures(root), ["footnotes", "zebra"])
+
+    def test_scenario_names_are_reserved(self) -> None:
+        with self.assertRaisesRegex(ThemeError, "reserved.*large-text"):
+            extra_fixtures(self.fixtures("large-text"))
+
+    def test_extras_are_checked_on_mac_and_iphone_in_both_appearances(self) -> None:
+        added = [t for t in check_targets(["footnotes"]) if t.fixture == "footnotes"]
+        self.assertEqual(
+            {(t.platform, t.appearance) for t in added},
+            {("mac", "light"), ("mac", "dark"), ("iphone", "light"), ("iphone", "dark")},
+        )
+        self.assertEqual(len(added), 4)
+        self.assertFalse(any(t.large_text or not t.theme_scripts for t in added))
+        self.assertEqual(len(check_targets(["a", "b"])), 24)
+
+    def test_extras_get_their_own_gallery_section_after_the_scenarios(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            site = Path(directory)
+            write_gallery(site, "Quiet Reader", check_targets(["footnotes"]))
+            gallery = (site / "index.html").read_text(encoding="utf-8")
+        headings = re.findall(r"<section><h2>([^<]+)</h2>", gallery)
+        self.assertEqual(headings[-1], "footnotes")
+        self.assertEqual(len(headings), 5)
+        self.assertIn("fixtures/footnotes.toml", gallery)
+        self.assertIn("20 cases", gallery)
+
+
+class OfflineMediaTests(unittest.TestCase):
+    def placeholder_size(self, tag: str) -> tuple[int, int]:
+        encoded = re.search(r'src="data:image/svg\+xml;base64,([^"]+)"', tag)
+        self.assertIsNotNone(encoded)
+        svg = base64.b64decode(encoded.group(1)).decode()
+        width, height = re.search(r'width="(\d+)" height="(\d+)"', svg).groups()
+        return int(width), int(height)
+
+    def test_network_images_become_same_size_placeholders(self) -> None:
+        body = offline_media(
+            '<a href="https://x.test/a.jpg"><img width="1024" height="683" alt="a > b" '
+            'src="https://x.test/a-1024.jpg" srcset="https://x.test/w_1,c_2.jpg 2x" '
+            'sizes="100vw" loading=lazy /></a>'
+        )
+        self.assertEqual(self.placeholder_size(body), (1024, 683))
+        self.assertNotIn("x.test/a-1024", body)
+        self.assertNotIn("srcset", body)
+        self.assertNotIn("sizes", body)
+        self.assertIn('alt="a > b" loading=lazy', body)
+        self.assertIn('<a href="https://x.test/a.jpg">', body)
+
+    def test_relative_and_protocol_relative_images_would_fetch_too(self) -> None:
+        for tag in ('<img src="images/a.png">', "<IMG SRC=//cdn.test/a.png>"):
+            with self.subTest(tag=tag):
+                self.assertEqual(self.placeholder_size(offline_media(tag)), (1600, 900))
+
+    def test_fetching_sources_are_dropped_for_their_img(self) -> None:
+        body = offline_media(
+            '<picture><source srcset="https://x.test/a.webp"><img src="https://x.test/a.jpg">'
+            "</picture>"
+        )
+        self.assertNotIn("<source", body)
+        self.assertNotIn("x.test", body)
+
+    def test_inline_images_are_untouched(self) -> None:
+        for body in ('<img src="data:image/png;base64,AAA" alt="x">', '<img alt="none">'):
+            self.assertEqual(offline_media(body), body)
 
 
 class RenderTests(unittest.TestCase):
@@ -124,6 +204,42 @@ class RenderTests(unittest.TestCase):
             self.assertIn("base-uri http: https:", page)
             self.assertIn("function processPage()", page)
             self.assertNotIn("[[title]]", page)
+
+    def test_ios_pages_define_the_feed_icon_label_the_app_injects(self) -> None:
+        root = Path(__file__).resolve().parents[1]
+        theme = find_theme(root)
+        with tempfile.TemporaryDirectory() as directory:
+            snapshot = make_snapshot(Path(directory))
+            ios, mac = (
+                render_page(
+                    root,
+                    theme,
+                    {"title": "T", "body": "<p>x</p>"},
+                    next(t for t in normal_targets() if t.platform == platform),
+                    snapshot=snapshot,
+                )
+                for platform in ("iphone", "mac")
+            )
+        # main_ios.js labels #nnwImageIcon with it; a missing one is a page error.
+        self.assertIn('const nnwGetFeedInfoLabel = "Get Feed Info";', ios)
+        self.assertNotIn("nnwGetFeedInfoLabel", mac)
+
+    def test_remote_avatar_gets_the_generated_tile(self) -> None:
+        root = Path(__file__).resolve().parents[1]
+        with tempfile.TemporaryDirectory() as directory:
+            theme = Path(directory) / "Test.nnwtheme"
+            theme.mkdir()
+            (theme / "stylesheet.css").write_text("", encoding="utf-8")
+            (theme / "template.html").write_text('<img src="[[avatar_src]]">[[body]]')
+            page = render_page(
+                root,
+                theme,
+                {"avatar_src": "https://x.test/icon.png", "feed_link_title": "Feed"},
+                normal_targets()[0],
+                snapshot=make_snapshot(Path(directory)),
+            )
+        self.assertNotIn("x.test", page)
+        self.assertIn('<img src="data:image/svg+xml;base64,', page)
 
     def test_theme_scripts_can_be_removed_without_removing_nnw_scripts(self) -> None:
         root = Path(__file__).resolve().parents[1]
