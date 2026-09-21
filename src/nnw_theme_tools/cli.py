@@ -141,7 +141,10 @@ def command_init(args: argparse.Namespace) -> None:
     root = find_root()
     theme = find_theme(root)
     if not (root / PLACEHOLDER_MARKER).exists():
-        raise ThemeError("this repository is already initialized")
+        raise ThemeError(
+            "this repository is already initialized; run `uv run nnw-theme setup` "
+            "to install preview tools"
+        )
 
     interactive = not all((args.name, args.creator, args.homepage))
     repository = _repository()
@@ -216,9 +219,18 @@ def command_init(args: argparse.Namespace) -> None:
     if install is None and interactive:
         install = _prompt_confirm("Set up WebKit for previews now?")
     if install:
-        snapshot = ensure_snapshot(root)
-        print(f"NetNewsWire {snapshot.release} rendering inputs are ready.")
-        setup_webkit()
+        # Initialization is already complete; a preview setup failure must not look like
+        # an init failure, because rerunning init is refused from here on.
+        try:
+            snapshot = ensure_snapshot(root)
+            print(f"NetNewsWire {snapshot.release} rendering inputs are ready.")
+            setup_webkit()
+        except ThemeError as error:
+            print(
+                f"Warning: initialization succeeded, but preview setup did not: {error}\n"
+                "Finish preview setup later with `uv run nnw-theme setup`.",
+                file=sys.stderr,
+            )
     print("Next: describe the design you want, then run `uv run nnw-theme preview`.")
 
 

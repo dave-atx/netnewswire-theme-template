@@ -49,7 +49,7 @@ def setup_webkit() -> None:
     if not shutil.which("playwright-cli"):
         raise ThemeError(
             "install playwright-cli first; on macOS run `brew install playwright-cli`, "
-            "then rerun this command"
+            "then run `uv run nnw-theme setup`"
         )
     inventory = browser_inventory()
     if "webkit" in inventory.lower() and _webkit_runs():
