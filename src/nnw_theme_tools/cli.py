@@ -460,11 +460,29 @@ def _add_common_remote_flag(parser: argparse.ArgumentParser) -> None:
     )
 
 
-def parser() -> argparse.ArgumentParser:
-    root = argparse.ArgumentParser(prog="nnw-theme", description="Build a NetNewsWire theme")
-    commands = root.add_subparsers(dest="command", required=True)
+def _command(
+    commands: Any, name: str, summary: str, description: str | None = None
+) -> argparse.ArgumentParser:
+    return commands.add_parser(name, help=summary, description=description or summary)
 
-    init = commands.add_parser("init", help="personalize this template")
+
+def parser() -> argparse.ArgumentParser:
+    root = argparse.ArgumentParser(
+        prog="nnw-theme",
+        description="Create, preview, check, and publish a NetNewsWire theme.",
+        epilog="Run `nnw-theme COMMAND --help` for a command's options.",
+    )
+    commands = root.add_subparsers(
+        dest="command", required=True, title="commands", metavar="COMMAND"
+    )
+
+    init = _command(
+        commands,
+        "init",
+        "personalize a fresh copy of the template (run once)",
+        "Name the theme, choose its permanent identifier, and optionally join the "
+        "marketplace and install WebKit. Runs once, while .nnw-theme-uninitialized exists.",
+    )
     init.add_argument("--name")
     init.add_argument("--creator")
     init.add_argument("--homepage")
@@ -475,64 +493,115 @@ def parser() -> argparse.ArgumentParser:
     init.add_argument("--install-browser", action=argparse.BooleanOptionalAction, default=None)
     init.set_defaults(function=command_init)
 
-    setup = commands.add_parser(
-        "setup", help="download pinned rendering inputs and install or locate WebKit"
+    setup = _command(
+        commands,
+        "setup",
+        "download NetNewsWire's rendering files and install WebKit",
+        "Download the pinned NetNewsWire rendering files and install the WebKit browser "
+        "that check and screenshot use. Safe to rerun.",
     )
     setup.set_defaults(function=command_setup)
 
-    render = commands.add_parser("render", help="build the static preview gallery")
-    render.add_argument("fixtures", nargs="*")
-    render.set_defaults(function=command_render)
+    update_parser = _command(
+        commands,
+        "update",
+        "refresh tooling and docs from the upstream template",
+        "Replace this repository's tooling, tests, workflows, and agent guidance with the "
+        "upstream template's. Your theme bundle and existing fixtures are never touched.",
+    )
+    update_parser.add_argument(
+        "--ref", help="template branch, tag, or commit (default: newest release tag)"
+    )
+    update_parser.add_argument(
+        "--dry-run", action="store_true", help="list the changes without writing them"
+    )
+    update_parser.set_defaults(
+        function=lambda args: update(find_root(), args.ref, dry_run=args.dry_run)
+    )
 
-    preview = commands.add_parser("preview", help="serve and rebuild the preview gallery")
-    preview.add_argument("--no-open", action="store_true")
+    preview = _command(
+        commands,
+        "preview",
+        "live gallery for editing: serves, opens, and rebuilds on save",
+        "Serve the preview gallery on localhost, open it, and rebuild whenever the theme "
+        "or fixtures change. Pages render live in your own browser; nothing is checked. "
+        "Runs until Ctrl-C.",
+    )
+    preview.add_argument("--no-open", action="store_true", help="do not open a browser")
     preview.set_defaults(function=command_preview)
 
-    package = commands.add_parser("package", help="validate and build the release ZIP")
-    package.add_argument("--output-dir", default="dist")
-    _add_common_remote_flag(package)
-    package.set_defaults(function=command_package)
+    render = _command(
+        commands,
+        "render",
+        "write the preview gallery once, without serving or checking",
+        "Write the same gallery as preview to build/preview/ and exit. Useful for scripts "
+        "and agents, since preview never exits.",
+    )
+    render.add_argument(
+        "fixtures", nargs="*", help="fixtures to include (default: all), e.g. article"
+    )
+    render.set_defaults(function=command_render)
 
-    check = commands.add_parser("check", help="run package and WebKit release checks")
+    check = _command(
+        commands,
+        "check",
+        "release gate: package and test every case in WebKit",
+        "Validate and package the theme, then render all 16 cases (both fixtures on Mac, "
+        "iPhone, and iPad in light and dark, plus large text and Article JavaScript off) "
+        "in WebKit, screenshot each, and fail on missing content, unresolved macros, "
+        "overflow, broken images, external requests, or JavaScript errors. Results go "
+        "into the gallery in build/preview/.",
+    )
     _add_common_remote_flag(check)
     check.add_argument(
         "--open",
         action=argparse.BooleanOptionalAction,
         default=None,
-        help="open the preview when done (default: ask in a terminal)",
+        help="open the gallery when done (default: ask in a terminal)",
     )
     check.set_defaults(function=command_check)
 
-    screenshot = commands.add_parser("screenshot", help="capture a checked preview image")
+    screenshot = _command(
+        commands,
+        "screenshot",
+        "check one case in WebKit and save its image",
+        "Render and check a single case in WebKit and save its full-page screenshot. "
+        "With --promote, it becomes screenshots/theme-preview.png, the marketplace card.",
+    )
     screenshot.add_argument("--fixture", choices=("article", "kitchen-sink"), default="article")
     screenshot.add_argument("--platform", choices=("mac", "iphone", "ipad"), default="mac")
     screenshot.add_argument("--appearance", choices=("light", "dark"), default="light")
-    screenshot.add_argument("--promote", action="store_true")
+    screenshot.add_argument(
+        "--promote", action="store_true", help="use it as the marketplace screenshot"
+    )
     screenshot.set_defaults(function=command_screenshot)
 
-    bump = commands.add_parser("bump", help="increase the plist Version integer")
-    bump.add_argument("--yes", action="store_true")
+    package = _command(
+        commands,
+        "package",
+        "validate the theme and build its release ZIP (no WebKit)",
+    )
+    package.add_argument("--output-dir", default="dist")
+    _add_common_remote_flag(package)
+    package.set_defaults(function=command_package)
+
+    bump = _command(commands, "bump", "increase the Info.plist Version before a release")
+    bump.add_argument("--yes", action="store_true", help="skip the confirmation")
     bump.set_defaults(function=command_bump)
 
-    update_parser = commands.add_parser(
-        "update", help="refresh tooling, workflows, and docs from the upstream template"
-    )
-    update_parser.add_argument(
-        "--ref", help="template branch, tag, or commit (default: newest release tag)"
-    )
-    update_parser.add_argument("--dry-run", action="store_true")
-    update_parser.set_defaults(
-        function=lambda args: update(find_root(), args.ref, dry_run=args.dry_run)
-    )
-
-    marketplace = commands.add_parser("marketplace", help="manage marketplace participation")
+    marketplace = _command(commands, "marketplace", "manage marketplace participation")
     marketplace_commands = marketplace.add_subparsers(dest="marketplace_command", required=True)
     enable = marketplace_commands.add_parser("enable", help="add the discovery topic on GitHub")
     enable.set_defaults(function=lambda _args: marketplace_enable())
 
-    release_check = commands.add_parser("release-check", help=argparse.SUPPRESS)
+    # Used only by the Publish workflow. argparse cannot hide a subcommand (help=SUPPRESS
+    # prints "==SUPPRESS=="), so it is added without help and dropped from the listing.
+    release_check = commands.add_parser("release-check")
     release_check.add_argument("--previous-asset", required=True)
     release_check.set_defaults(function=command_release_check)
+    commands._choices_actions = [
+        action for action in commands._choices_actions if action.dest != "release-check"
+    ]
     return root
 
 

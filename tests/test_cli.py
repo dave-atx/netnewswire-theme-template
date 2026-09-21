@@ -13,6 +13,7 @@ from nnw_theme_tools.cli import (
     _CheckProgress,
     _offer_to_open,
     command_init,
+    parser,
 )
 from nnw_theme_tools.project import PLACEHOLDER_MARKER, ThemeError, write_plist
 from nnw_theme_tools.render import normal_targets
@@ -98,6 +99,15 @@ class InitTests(unittest.TestCase):
             self.assertFalse((root / PLACEHOLDER_MARKER).exists())
             self.assertIn("install playwright-cli first", stderr.getvalue())
             self.assertIn("uv run nnw-theme setup", stderr.getvalue())
+
+
+class HelpTests(unittest.TestCase):
+    def test_release_check_is_hidden_but_still_parses(self) -> None:
+        text = parser().format_help()
+        self.assertNotIn("release-check", text)
+        self.assertNotIn("SUPPRESS", text)
+        args = parser().parse_args(["release-check", "--previous-asset", "old.zip"])
+        self.assertEqual(args.previous_asset, "old.zip")
 
 
 class _Terminal(io.StringIO):
