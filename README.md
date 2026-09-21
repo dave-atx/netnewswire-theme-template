@@ -106,7 +106,9 @@ uv run nnw-theme check
 This validates and packages the exact theme, then checks 16 WebKit renders: two
 articles across macOS, iPhone, iPad, light and dark appearances, plus large-text and
 Article-JavaScript-off cases. External requests are blocked. Results are written to
-`build/preview/`; the release ZIP is written to `build/release/`.
+`build/preview/`, a gallery grouped by scenario that marks each case passed or failed
+and lists failures first; the release ZIP is written to `build/release/`. In a
+terminal, `check` shows its progress and offers to open the gallery when it finishes.
 
 After a successful default-branch check, the Pages workflow publishes the same
 sandboxed gallery. Pull requests and failed checks retain it as a downloadable
@@ -165,7 +167,7 @@ uv run nnw-theme update [--dry-run]    Refresh tooling from the upstream templat
 uv run nnw-theme setup                 Download inputs and install or locate WebKit
 uv run nnw-theme preview [--no-open]   Rebuilding local preview
 uv run nnw-theme render [fixture ...]  Generate the static gallery only
-uv run nnw-theme check                 Full release gate
+uv run nnw-theme check [--no-open]     Full release gate; offers to open the results
 uv run nnw-theme package               Deterministic release ZIP
 uv run nnw-theme screenshot --promote  Update the deliberate marketplace image
 uv run nnw-theme bump [--yes]          Increase the integer theme version

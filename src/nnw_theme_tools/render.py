@@ -51,6 +51,44 @@ window.webkit = window.webkit || {messageHandlers: new Proxy({}, {
 IOS_LABEL_SHIM = """
 window.localizedStrings = window.localizedStrings || {};
 """
+PLATFORM_NAMES = {"mac": "Mac", "iphone": "iPhone", "ipad": "iPad"}
+FIXTURE_NAMES = {"article": "Article", "kitchen-sink": "Kitchen sink"}
+# Gallery sections, in order: (scenario, heading, what the scenario covers).
+SCENARIOS = (
+    (
+        "article",
+        "Everyday reading",
+        "The article fixture: a typical short post with a headline, byline, standfirst, "
+        "prose, and a pull quote.",
+    ),
+    (
+        "kitchen-sink",
+        "Stress test",
+        "The kitchen-sink fixture: a very long headline, byline, and feed name; inline "
+        "formatting; nested lists; an unbroken identifier that exposes horizontal "
+        "overflow; a quotation, code block, table, figure, and footnote.",
+    ),
+    (
+        "large-text",
+        "Large text",
+        "The kitchen-sink fixture at a large reading size: the xxLargeText size class on "
+        "Mac and 23 pt Dynamic Type on iPhone.",
+    ),
+    (
+        "article-javascript-off",
+        "Article JavaScript off",
+        "The article fixture with the theme's own scripts removed, as when a reader turns "
+        "off NetNewsWire's Article JavaScript setting. It must still read well.",
+    ),
+)
+CHECKS = (
+    "article content renders",
+    "no unresolved [[macros]]",
+    "no horizontal overflow",
+    "no broken images",
+    "no external requests",
+    "no JavaScript errors",
+)
 
 
 @dataclass(frozen=True)
@@ -66,6 +104,24 @@ class RenderTarget:
     @property
     def ios(self) -> bool:
         return self.platform in {"iphone", "ipad"}
+
+    @property
+    def label(self) -> str:
+        parts = [FIXTURE_NAMES.get(self.fixture, self.fixture), PLATFORM_NAMES[self.platform]]
+        parts.append(self.appearance)
+        if self.large_text:
+            parts.append("large text")
+        if not self.theme_scripts:
+            parts.append("Article JavaScript off")
+        return " · ".join(parts)
+
+    @property
+    def scenario(self) -> str:
+        if self.large_text:
+            return "large-text"
+        if not self.theme_scripts:
+            return "article-javascript-off"
+        return self.fixture
 
     @property
     def slug(self) -> str:
@@ -230,11 +286,9 @@ def render_site(
         shutil.rmtree(site)
     pages = site / "pages"
     views = site / "views"
-    shots = site / "screenshots"
     pages.mkdir(parents=True, exist_ok=True)
     views.mkdir(parents=True, exist_ok=True)
-    shots.mkdir(parents=True, exist_ok=True)
-    cards: list[str] = []
+    (site / "screenshots").mkdir(parents=True, exist_ok=True)
     for target in targets:
         fixture = read_fixture(root / "fixtures" / f"{target.fixture}.toml")
         destination = pages / f"{target.slug}.html"
@@ -244,53 +298,172 @@ def render_site(
         )
         viewer = f"""<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width">
-<title>{html.escape(target.slug)} · {html.escape(theme.stem)} preview</title><style>
+<title>{html.escape(target.label)} · {html.escape(theme.stem)} preview</title><style>
 html,body,iframe {{ border: 0; height: 100%; margin: 0; width: 100%; }}
 </style></head><body><iframe src="../pages/{target.slug}.html" sandbox="allow-scripts"
-title="Sandboxed {html.escape(target.slug)} theme preview"></iframe></body></html>"""
+style="color-scheme: {target.appearance}"
+title="Sandboxed {html.escape(target.label)} theme preview"></iframe></body></html>"""
         (views / f"{target.slug}.html").write_text(viewer, encoding="utf-8")
-        shot = f"screenshots/{target.slug}.png"
-        labels = [target.fixture, target.platform, target.appearance]
-        if target.large_text:
-            labels.append("large text")
-        if not target.theme_scripts:
-            labels.append("article JavaScript off")
-        cards.append(
-            '<article class="card">'
-            '<div class="preview">'
-            f'<iframe loading="lazy" src="pages/{target.slug}.html" sandbox="allow-scripts" '
-            f'title="Sandboxed {html.escape(target.slug)} theme preview"></iframe>'
-            f'<img src="{shot}" alt="{html.escape(target.slug)} checked screenshot" '
-            'onload="this.previousElementSibling.hidden=true"></div>'
-            f"<h2>{html.escape(' · '.join(labels))}</h2>"
-            f'<p><a href="views/{target.slug}.html">Open full size</a> · '
-            f'<a href="{shot}">Screenshot</a></p>'
-            "</article>"
+    write_gallery(site, theme.stem, targets)
+    return site
+
+
+def _case(target: RenderTarget, failures: list[str] | None) -> str:
+    slug = html.escape(target.slug)
+    label = html.escape(target.label)
+    shot = f"screenshots/{slug}.png"
+    status = ""
+    if failures is not None:
+        status = (
+            '<span class="badge fail">✗ Failed</span>'
+            if failures
+            else '<span class="badge pass">✓ Passed</span>'
         )
+    reasons = "".join(f"<li>{html.escape(reason)}</li>" for reason in failures or [])
+    # The live page renders at the real viewport size and is scaled into the thumbnail;
+    # the checked screenshot covers it once it exists.
+    return (
+        f'<figure class="case{" failed" if failures else ""}" id="{slug}">'
+        f'<a class="thumb" href="views/{slug}.html" '
+        f'style="aspect-ratio: {target.width} / {target.height}">'
+        f'<iframe loading="lazy" src="pages/{slug}.html" sandbox="allow-scripts" '
+        f'tabindex="-1" width="{target.width}" height="{target.height}" '
+        f'style="color-scheme: {target.appearance}" '
+        f'title="Sandboxed {label} theme preview"></iframe>'
+        f'<img src="{shot}" alt="Checked screenshot: {label}" '
+        'onload="this.previousElementSibling.remove()" onerror="this.remove()"></a>'
+        f"<figcaption>{status}"
+        f'<a href="views/{slug}.html">Full size</a>'
+        f"{f' · <a href={shot}>Screenshot</a>' if failures is not None else ''}"
+        f"{f'<ul class=reasons>{reasons}</ul>' if reasons else ''}</figcaption></figure>"
+    )
+
+
+def _section(
+    heading: str,
+    description: str,
+    targets: list[RenderTarget],
+    results: dict[str, list[str]] | None,
+) -> str:
+    platforms = [name for name in PLATFORM_NAMES if any(t.platform == name for t in targets)]
+    appearances = [
+        name for name in ("light", "dark") if any(t.appearance == name for t in targets)
+    ]
+    header = "".join(f'<div class="column">{name.title()}</div>' for name in appearances)
+    by_cell = {(t.platform, t.appearance): t for t in targets}
+    rows = []
+    for platform in platforms:
+        cells = [
+            _case(target, None if results is None else results.get(target.slug, []))
+            if (target := by_cell.get((platform, appearance)))
+            else "<div></div>"
+            for appearance in appearances
+        ]
+        rows.append(f'<div class="row-label">{PLATFORM_NAMES[platform]}</div>{"".join(cells)}')
+    return (
+        f"<section><h2>{html.escape(heading)}</h2><p>{html.escape(description)}</p>"
+        f'<div class="matrix" style="--columns: {len(appearances)}">'
+        f"<div></div>{header}{''.join(rows)}</div></section>"
+    )
+
+
+def write_gallery(
+    site: Path,
+    theme_name: str,
+    targets: list[RenderTarget],
+    results: dict[str, list[str]] | None = None,
+) -> None:
+    """Write index.html; results maps each checked slug to its failures."""
+    sections = []
+    known = {scenario for scenario, _, _ in SCENARIOS}
+    extra = [
+        (target.scenario, FIXTURE_NAMES.get(target.fixture, target.fixture), "")
+        for target in targets
+        if target.scenario not in known
+    ]
+    for scenario, heading, description in (*SCENARIOS, *dict.fromkeys(extra)):
+        members = [target for target in targets if target.scenario == scenario]
+        if members:
+            sections.append(_section(heading, description, members, results))
+
+    if results is None:
+        summary = (
+            f"<p class=summary>{len(targets)} cases, not checked yet. Run "
+            "<code>uv run nnw-theme check</code> to verify them in WebKit.</p>"
+        )
+        failed_list = ""
+    else:
+        failed = [target for target in targets if results.get(target.slug)]
+        summary = (
+            f'<p class="summary {"fail" if failed else "pass"}">{len(targets)} cases · '
+            f"{len(targets) - len(failed)} passed · {len(failed)} failed</p>"
+        )
+        failed_list = (
+            "<section class=failures><h2>Failures</h2><ul>"
+            + "".join(
+                f'<li><a href="#{html.escape(t.slug)}">{html.escape(t.label)}</a>: '
+                f"{html.escape('; '.join(results[t.slug]))}</li>"
+                for t in failed
+            )
+            + "</ul></section>"
+            if failed
+            else ""
+        )
+    checks = "".join(f"<li>{html.escape(check)}</li>" for check in CHECKS)
     gallery = f"""<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg'/%3E">
-<title>{html.escape(theme.stem)} preview</title><style>
-:root {{ color-scheme: light dark; font-family: system-ui; }}
-body {{ margin: 0 auto; max-width: 90rem; padding: 2rem; }}
-.notice {{ background: CanvasText; color: Canvas; padding: .75rem 1rem; }}
-.grid {{ display: grid; gap: 1.5rem;
-  grid-template-columns: repeat(auto-fit,minmax(18rem,1fr)); }}
-.card {{ border: 1px solid color-mix(in srgb, CanvasText 20%, Canvas);
-  border-radius: .6rem; overflow: hidden; }}
-.preview {{ aspect-ratio: 16/10; background: color-mix(in srgb, CanvasText 8%, Canvas);
-  overflow: hidden; position: relative; }}
-.card iframe,.card img {{ border: 0; height: 100%; inset: 0; position: absolute;
+<title>{html.escape(theme_name)} preview</title><style>
+:root {{ color-scheme: light dark; font-family: system-ui; --pass: #1a7f37; --fail: #cf222e;
+  --line: color-mix(in srgb, CanvasText 18%, Canvas);
+  --wash: color-mix(in srgb, CanvasText 6%, Canvas); }}
+@media (prefers-color-scheme: dark) {{ :root {{ --pass: #3fb950; --fail: #f85149; }} }}
+body {{ background: Canvas; color: CanvasText; line-height: 1.45; margin: 0 auto;
+  max-width: 72rem; padding: 1.5rem 1rem 4rem; }}
+.notice {{ background: var(--wash); border-radius: .4rem; font-size: .9rem;
+  margin: 0 0 1.5rem; padding: .6rem .9rem; }}
+h1 {{ margin: 0 0 .3rem; }} h2 {{ margin: 0 0 .25rem; }}
+.summary {{ font-size: 1.1rem; font-weight: 600; margin: 0 0 .5rem; }}
+.summary.pass {{ color: var(--pass); }} .summary.fail {{ color: var(--fail); }}
+details {{ margin-bottom: 1rem; }} summary {{ cursor: pointer; }}
+section {{ border-top: 1px solid var(--line); padding: 1.5rem 0 .5rem; }}
+section > p {{ margin: 0 0 1rem; max-width: 46rem; }}
+.failures li {{ margin-bottom: .3rem; }} .failures a {{ color: var(--fail); }}
+.matrix {{ align-items: start; display: grid; gap: 1rem 1.25rem;
+  grid-template-columns: 4rem repeat(var(--columns), minmax(0, 1fr)); }}
+.column {{ font-weight: 600; }}
+.row-label {{ font-weight: 600; padding-top: .3rem; }}
+.case {{ margin: 0; }}
+.thumb {{ background: var(--wash); border: 1px solid var(--line); border-radius: .5rem;
+  display: block; height: 20rem; max-width: 100%; overflow: hidden; position: relative;
+  width: auto; }}
+.case.failed .thumb {{ border: 2px solid var(--fail); }}
+.thumb iframe {{ border: 0; left: 0; pointer-events: none; position: absolute; top: 0;
+  transform-origin: 0 0; }}
+.thumb img {{ display: block; height: 100%; object-fit: cover; object-position: top;
   width: 100%; }}
-.card iframe {{
-  background: color-mix(in srgb, CanvasText 8%, Canvas); display: block;
-  pointer-events: none; }}
-.card img {{ object-fit: cover; object-position: top; }}
-.card h2,.card p {{ margin: .8rem 1rem; }} .card h2 {{ font-size: 1rem; }}
-</style></head><body><p class="notice">Development preview — install themes only
-from a release.</p><h1>{html.escape(theme.stem)} preview</h1>
-<p>Generated from the same renderer used by checks.</p>
-<p>Before checked screenshots exist, live thumbnails follow your system appearance.</p>
-<main class="grid">{"".join(cards)}</main></body></html>"""
+figcaption {{ font-size: .85rem; margin-top: .4rem; }}
+.badge {{ font-weight: 600; margin-right: .5rem; }}
+.badge.pass {{ color: var(--pass); }} .badge.fail {{ color: var(--fail); }}
+.reasons {{ color: var(--fail); margin: .3rem 0 0; padding-left: 1.1rem; }}
+@media (max-width: 40rem) {{
+  .matrix {{ grid-template-columns: repeat(var(--columns), minmax(0, 1fr)); }}
+  .matrix > div:first-child {{ display: none; }}
+  .row-label {{ grid-column: 1 / -1; padding: 0; }}
+  .thumb {{ height: auto; width: 100%; }}
+}}
+</style></head><body>
+<p class="notice">Development preview. Install themes only from a release.</p>
+<h1>{html.escape(theme_name)} preview</h1>
+{summary}
+<details><summary>What every case checks</summary><ul>{checks}</ul></details>
+{failed_list}{"".join(sections)}
+<script>
+// Scale each live page from its real viewport width down to the thumbnail.
+const fit = frame => {{ frame.style.transform =
+  `scale(${{frame.parentElement.clientWidth / frame.width}})`; }};
+const observer = new ResizeObserver(entries =>
+  entries.forEach(entry => entry.target.querySelectorAll("iframe").forEach(fit)));
+document.querySelectorAll(".thumb").forEach(thumb => observer.observe(thumb));
+</script></body></html>"""
     (site / "index.html").write_text(gallery, encoding="utf-8")
-    return site

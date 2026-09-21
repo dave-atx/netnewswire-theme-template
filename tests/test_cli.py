@@ -8,8 +8,14 @@ from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
 from unittest.mock import patch
 
-from nnw_theme_tools.cli import _absolute_homepage, command_init
+from nnw_theme_tools.cli import (
+    _absolute_homepage,
+    _CheckProgress,
+    _offer_to_open,
+    command_init,
+)
 from nnw_theme_tools.project import PLACEHOLDER_MARKER, ThemeError, write_plist
+from nnw_theme_tools.render import normal_targets
 
 
 def _template(root: Path) -> Path:
@@ -92,6 +98,64 @@ class InitTests(unittest.TestCase):
             self.assertFalse((root / PLACEHOLDER_MARKER).exists())
             self.assertIn("install playwright-cli first", stderr.getvalue())
             self.assertIn("uv run nnw-theme setup", stderr.getvalue())
+
+
+class _Terminal(io.StringIO):
+    def isatty(self) -> bool:
+        return True
+
+
+class CheckOutputTests(unittest.TestCase):
+    def test_plain_progress_prints_one_line_per_case(self) -> None:
+        stream = io.StringIO()
+        progress = _CheckProgress(2, stream)
+        first, second = normal_targets()[:2]
+        progress.start(1, first)
+        progress.finish(1, first, [])
+        progress.start(2, second)
+        progress.finish(2, second, ["horizontal document overflow"])
+        progress.done()
+        self.assertEqual(
+            stream.getvalue(),
+            "[1/2] Article · Mac · light … passed\n"
+            "[2/2] Article · Mac · dark … FAILED: horizontal document overflow\n",
+        )
+
+    def test_terminal_progress_rewrites_one_line_and_keeps_failures(self) -> None:
+        stream = _Terminal()
+        progress = _CheckProgress(2, stream)
+        first, second = normal_targets()[:2]
+        progress.start(1, first)
+        progress.finish(1, first, [])
+        progress.start(2, second)
+        progress.finish(2, second, ["page errors"])
+        progress.done()
+        output = stream.getvalue()
+        self.assertIn("\r\033[KChecking 1/2 · Article · Mac · light", output)
+        self.assertIn("\r\033[K✗ Article · Mac · dark: page errors\n", output)
+        self.assertTrue(output.endswith("\r\033[K"))
+        self.assertEqual(output.count("\n"), 1)
+
+    def test_open_choice_overrides_the_prompt(self) -> None:
+        index = Path("/tmp/preview/index.html")
+        with (
+            patch("nnw_theme_tools.cli.webbrowser.open") as browser,
+            patch("nnw_theme_tools.cli._prompt_confirm") as prompt,
+        ):
+            _offer_to_open(index, True)
+            _offer_to_open(index, False)
+        browser.assert_called_once_with(index.as_uri())
+        prompt.assert_not_called()
+
+    def test_open_is_not_offered_outside_a_terminal(self) -> None:
+        with (
+            patch("nnw_theme_tools.cli.sys.stdin", io.StringIO()),
+            patch("nnw_theme_tools.cli.webbrowser.open") as browser,
+            patch("nnw_theme_tools.cli._prompt_confirm") as prompt,
+        ):
+            _offer_to_open(Path("/tmp/preview/index.html"), None)
+        browser.assert_not_called()
+        prompt.assert_not_called()
 
 
 if __name__ == "__main__":

@@ -11,7 +11,7 @@ import time
 import webbrowser
 import zipfile
 from pathlib import Path
-from typing import Any
+from typing import Any, TextIO
 from urllib.parse import urlparse
 
 from .browser import check_pages, serve, setup_webkit
@@ -26,7 +26,7 @@ from .project import (
     read_plist,
     write_plist,
 )
-from .render import RenderTarget, check_targets, normal_targets, render_site
+from .render import RenderTarget, check_targets, normal_targets, render_site, write_gallery
 from .snapshot import ensure_snapshot
 from .update import update
 
@@ -72,7 +72,7 @@ def _prompt_text(label: str, default: str) -> str:
 
     answer = questionary.text(label, default=default).ask()
     if answer is None:
-        raise ThemeError("initialization cancelled")
+        raise ThemeError("cancelled")
     return answer.strip()
 
 
@@ -81,7 +81,7 @@ def _prompt_confirm(label: str, default: bool = True) -> bool:
 
     answer = questionary.confirm(label, default=default).ask()
     if answer is None:
-        raise ThemeError("initialization cancelled")
+        raise ThemeError("cancelled")
     return answer
 
 
@@ -276,26 +276,85 @@ def command_render(args: argparse.Namespace) -> None:
     print(site / "index.html")
 
 
+class _CheckProgress:
+    """One line rewritten in place on a terminal; one plain line per case elsewhere."""
+
+    def __init__(self, total: int, stream: TextIO = sys.stderr) -> None:
+        self.total = total
+        self.stream = stream
+        self.live = stream.isatty()
+
+    def _write(self, text: str) -> None:
+        self.stream.write(text)
+        self.stream.flush()
+
+    def status(self, message: str) -> None:
+        self._write(f"\r\033[K{message}" if self.live else f"{message}\n")
+
+    def start(self, index: int, target: RenderTarget) -> None:
+        if self.live:
+            self._write(f"\r\033[KChecking {index}/{self.total} · {target.label}")
+
+    def finish(self, index: int, target: RenderTarget, failures: list[str]) -> None:
+        if self.live and failures:
+            self._write(f"\r\033[K✗ {target.label}: {'; '.join(failures)}\n")
+        elif not self.live:
+            outcome = f"FAILED: {'; '.join(failures)}" if failures else "passed"
+            self._write(f"[{index}/{self.total}] {target.label} … {outcome}\n")
+
+    def done(self) -> None:
+        if self.live:
+            self._write("\r\033[K")
+
+
+def _offer_to_open(index: Path, choice: bool | None) -> None:
+    interactive = sys.stdin.isatty() and sys.stdout.isatty()
+    if choice is None:
+        choice = interactive and _prompt_confirm("Open the preview?", default=True)
+    if choice:
+        webbrowser.open(index.as_uri())
+
+
 def command_check(args: argparse.Namespace) -> None:
     root = find_root()
     theme = find_theme(root)
+    targets = check_targets()
+    progress = _CheckProgress(len(targets))
+    progress.status("Validating and packaging the theme…")
     archive, warnings = build_archive(
         theme, root / "build" / "release", allow_remote_media=args.allow_remote_media
     )
+    progress.done()
     _print_warnings(warnings)
-    targets = check_targets()
+    progress.status(f"Rendering {len(targets)} pages…")
     site = render_site(root, theme, targets)
-    failures = check_pages(site, targets)
+    try:
+        results = check_pages(site, targets, progress)
+    finally:
+        progress.done()
+    write_gallery(site, theme.stem, targets, results)
+    failures = [
+        f"{target.label}: {message}"
+        for target in targets
+        for message in results.get(target.slug, [])
+    ]
+    passed = sum(not results.get(target.slug) for target in targets)
     report_path = root / "build" / "check-report.txt"
     if failures:
         report_path.write_text("FAIL\n" + "\n".join(failures) + "\n", encoding="utf-8")
-        raise ThemeError("browser checks failed:\n- " + "\n- ".join(failures))
-    report_path.write_text(
-        f"PASS\n{len(targets)} WebKit renders checked\nPackage: {archive.name}\n",
-        encoding="utf-8",
-    )
-    print(f"PASS: {len(targets)} WebKit renders and {archive.name}")
+    else:
+        report_path.write_text(
+            f"PASS\n{len(targets)} WebKit renders checked\nPackage: {archive.name}\n",
+            encoding="utf-8",
+        )
+        print(f"PASS: {len(targets)} WebKit renders and {archive.name}")
     print(f"Preview: {site / 'index.html'}")
+    _offer_to_open(site / "index.html", args.open)
+    if failures:
+        raise ThemeError(
+            f"{len(targets) - passed} of {len(targets)} WebKit renders failed:\n- "
+            + "\n- ".join(failures)
+        )
 
 
 def _project_mtime(root: Path) -> int:
@@ -341,7 +400,7 @@ def command_screenshot(args: argparse.Namespace) -> None:
     theme = find_theme(root)
     target = _select_target(args)
     site = render_site(root, theme, [target])
-    failures = check_pages(site, [target])
+    failures = check_pages(site, [target])[target.slug]
     if failures:
         raise ThemeError("screenshot checks failed:\n- " + "\n- ".join(failures))
     source = site / "screenshots" / f"{target.slug}.png"
@@ -436,6 +495,12 @@ def parser() -> argparse.ArgumentParser:
 
     check = commands.add_parser("check", help="run package and WebKit release checks")
     _add_common_remote_flag(check)
+    check.add_argument(
+        "--open",
+        action=argparse.BooleanOptionalAction,
+        default=None,
+        help="open the preview when done (default: ask in a terminal)",
+    )
     check.set_defaults(function=command_check)
 
     screenshot = commands.add_parser("screenshot", help="capture a checked preview image")

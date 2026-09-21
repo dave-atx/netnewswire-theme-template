@@ -17,6 +17,7 @@ from nnw_theme_tools.render import (
     render_page,
     render_site,
     substitute,
+    write_gallery,
 )
 
 
@@ -73,6 +74,37 @@ class RenderTests(unittest.TestCase):
             self.assertIn(f"screenshots/{target.slug}.png", gallery)
             self.assertIn('sandbox="allow-scripts"', gallery)
             self.assertIn('sandbox="allow-scripts"', viewer)
+
+    def test_gallery_groups_cases_by_scenario_and_reports_results(self) -> None:
+        targets = check_targets()
+        failing = next(t for t in targets if t.platform == "iphone" and t.appearance == "dark")
+        results = {target.slug: [] for target in targets}
+        results[failing.slug] = ["horizontal document overflow"]
+        with tempfile.TemporaryDirectory() as directory:
+            site = Path(directory)
+            write_gallery(site, "Quiet Reader", targets, results)
+            gallery = (site / "index.html").read_text(encoding="utf-8")
+        headings = re.findall(r"<section><h2>([^<]+)</h2>", gallery)
+        self.assertEqual(
+            headings,
+            ["Everyday reading", "Stress test", "Large text", "Article JavaScript off"],
+        )
+        self.assertIn("16 cases · 15 passed · 1 failed", gallery)
+        self.assertLess(gallery.index("<h2>Failures</h2>"), gallery.index("Everyday reading"))
+        self.assertIn(f'href="#{failing.slug}"', gallery)
+        self.assertEqual(gallery.count("✓ Passed"), 15)
+        self.assertEqual(gallery.count("✗ Failed"), 1)
+        self.assertIn("<li>horizontal document overflow</li>", gallery)
+
+    def test_unchecked_gallery_has_no_results_or_screenshot_links(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            site = Path(directory)
+            write_gallery(site, "Quiet Reader", normal_targets())
+            gallery = (site / "index.html").read_text(encoding="utf-8")
+        self.assertIn("12 cases, not checked yet", gallery)
+        self.assertNotIn("Passed", gallery)
+        self.assertNotIn("Screenshot</a>", gallery)
+        self.assertNotIn("Large text", gallery)
 
     def test_render_uses_pinned_input_and_keeps_inline_theme_script(self) -> None:
         root = Path(__file__).resolve().parents[1]

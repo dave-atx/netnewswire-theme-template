@@ -9,6 +9,7 @@ import threading
 import uuid
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+from typing import Protocol
 from urllib.parse import quote
 
 from .project import ThemeError
@@ -139,15 +140,28 @@ def _parse_state(output: str) -> dict[str, object]:
     return value
 
 
-def check_pages(site: Path, targets: list[RenderTarget]) -> list[str]:
-    failures: list[str] = []
+class CheckProgress(Protocol):
+    def status(self, message: str) -> None: ...
+    def start(self, index: int, target: RenderTarget) -> None: ...
+    def finish(self, index: int, target: RenderTarget, failures: list[str]) -> None: ...
+
+
+def check_pages(
+    site: Path, targets: list[RenderTarget], progress: CheckProgress | None = None
+) -> dict[str, list[str]]:
+    """Each target's slug mapped to its failures (empty when it passed)."""
+    results: dict[str, list[str]] = {}
     screenshots = site / "screenshots"
     screenshots.mkdir(parents=True, exist_ok=True)
     session = f"nnw-{uuid.uuid4().hex[:10]}"
     with serve(site) as base_url:
+        if progress:
+            progress.status("Starting WebKit…")
         _run(["playwright-cli", f"-s={session}", "open", "--browser=webkit", "about:blank"])
         try:
-            for target in targets:
+            for index, target in enumerate(targets, 1):
+                if progress:
+                    progress.start(index, target)
                 url = f"{base_url}/pages/{quote(target.slug)}.html"
                 screenshot = screenshots / f"{target.slug}.png"
                 result = _run(
@@ -173,7 +187,9 @@ def check_pages(site: Path, targets: list[RenderTarget]) -> list[str]:
                     target_failures.append(f"external requests: {state['blocked']}")
                 if state["pageErrors"]:
                     target_failures.append(f"page errors: {state['pageErrors']}")
-                failures.extend(f"{target.slug}: {message}" for message in target_failures)
+                results[target.slug] = target_failures
+                if progress:
+                    progress.finish(index, target, target_failures)
         finally:
             _run(["playwright-cli", f"-s={session}", "close"], check=False)
-    return failures
+    return results
