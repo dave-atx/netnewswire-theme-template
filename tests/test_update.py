@@ -140,7 +140,7 @@ class UpdateTests(unittest.TestCase):
 
     def test_refuses_uncommitted_template_changes(self) -> None:
         (self.root / "pyproject.toml").write_text("local edit\n")
-        with self.assertRaisesRegex(ThemeError, "commit or stash"):
+        with self.assertRaisesRegex(ThemeError, "commit your changes"):
             self._update()
         self.assertEqual((self.root / "src/nnw_theme_tools/cli.py").read_text(), "old\n")
 

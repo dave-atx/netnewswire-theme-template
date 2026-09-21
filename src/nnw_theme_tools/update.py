@@ -202,8 +202,9 @@ def _require_clean(root: Path, plan: Plan) -> None:
         raise ThemeError(message) from error
     if result.stdout.strip():
         raise ThemeError(
-            "commit or stash your changes to these template files before updating:\n"
-            + result.stdout.rstrip()
+            # Not "or stash": a plain stash leaves untracked files behind, which splits an
+            # uncommitted init into a new bundle beside a restored Starter.nnwtheme.
+            "commit your changes to these files before updating:\n" + result.stdout.rstrip()
         )
 
 
