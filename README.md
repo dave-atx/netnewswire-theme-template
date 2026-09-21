@@ -252,6 +252,11 @@ touches your `.nnwtheme` bundle, your screenshot, or fixtures you already have, 
 keeps workflows you added. Review the result with `git diff`, run
 `uv run nnw-theme check`, and commit.
 
+To write your own README instead, keep it between the `nnw-theme-identity` markers and
+delete everything after the closing one; `update` then leaves the README alone.
+`CLAUDE.md` and `AGENTS.md` belong to the template, so put your own agent guidance in
+`.claude/CLAUDE.md`, which Claude Code also reads.
+
 Copies made before `update` existed can bootstrap it once:
 
 ```sh
