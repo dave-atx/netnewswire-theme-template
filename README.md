@@ -171,11 +171,11 @@ This validates and packages the exact theme, then checks 16 WebKit renders: two
 articles across macOS, iPhone, iPad, light and dark appearances, plus large-text and
 Article-JavaScript-off cases. Each fixture you add is checked on macOS and iPhone in
 both appearances as well. Every footnote marker must open NetNewsWire's popover with
-its note, stay legible, and match the others. External requests are blocked. Results
-are written to `build/preview/`, a gallery grouped by scenario that marks each case
-passed or failed and lists failures first; the release ZIP is written to
-`build/release/`. In a terminal, `check` shows its progress and offers to open the
-gallery when it finishes.
+its note, stay legible, match the others, and stay on the line of the word it is
+written against. External requests are blocked. Results are written to
+`build/preview/`, a gallery grouped by scenario that marks each case passed or failed
+and lists failures first; the release ZIP is written to `build/release/`. In a
+terminal, `check` shows its progress and offers to open the gallery when it finishes.
 
 After a successful default-branch check, the Pages workflow publishes the same
 sandboxed gallery. Pull requests and failed checks retain it as a downloadable
