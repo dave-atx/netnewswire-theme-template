@@ -32,7 +32,10 @@ def _run(arguments: list[str], *, check: bool = True) -> subprocess.CompletedPro
 def browser_inventory() -> str:
     if not shutil.which("playwright-cli"):
         return ""
-    return _run(["playwright-cli", "install-browser", "--list"]).stdout
+    # Listing fails on a browser cache that has never had an install (it reads the
+    # missing .links directory), so treat any failure as "nothing installed yet".
+    result = _run(["playwright-cli", "install-browser", "--list"], check=False)
+    return result.stdout if result.returncode == 0 else ""
 
 
 def _webkit_runs() -> bool:
