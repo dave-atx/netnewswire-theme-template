@@ -27,6 +27,17 @@ is a GitHub template, not a theme to install as-is. On its GitHub page, choose
 then work in that repository. If you are reading this in a repository already
 created from the template, skip this step.
 
+With the [GitHub CLI](https://cli.github.com/), one command creates the repository
+and clones it (replace `YOUR-THEME` with the name you want):
+
+```sh
+gh repo create YOUR-THEME --template dave-atx/netnewswire-theme-template --public --clone
+cd YOUR-THEME
+```
+
+The marketplace lists only public repositories; use `--private` if you don't want
+the theme listed.
+
 Do not use **Fork** or simply clone the original template as your theme repository:
 the marketplace skips forks, and a clone still points at the template repository.
 Initialization warns if it detects a fork. You can choose whether your new repository
@@ -45,33 +56,86 @@ ask again before creating a GitHub release or making another external change.
 
 ## Start without an agent
 
-After creating your repository from the template, clone **your** repository and enter
-it (replace `YOUR-NAME/YOUR-THEME` with its GitHub path):
+The whole path, in order. Steps 1–3 happen once; step 4 is where you spend your time.
+
+**1. Install the tools.** On macOS:
+
+```sh
+brew install uv playwright-cli gh
+gh auth login
+```
+
+`uv` and `playwright-cli` are required. `gh`, the GitHub CLI, is optional but
+recommended: it creates your repository in one step, and `init` uses it to fill in
+GitHub defaults, warn about forks, and join the marketplace. Without it, join by adding
+the `netnewswire-theme` topic in your repository's GitHub settings. On Linux, install
+the same tools with their documented instructions.
+
+**2. Get your own copy.** Create and clone your repository:
+
+```sh
+gh repo create YOUR-THEME --template dave-atx/netnewswire-theme-template --public --clone
+cd YOUR-THEME
+```
+
+Or create it on GitHub (above) and clone **your** repository (replace
+`YOUR-NAME/YOUR-THEME` with its GitHub path):
 
 ```sh
 git clone https://github.com/YOUR-NAME/YOUR-THEME.git
 cd YOUR-THEME
 ```
 
-On macOS, install the two tools and run the guided initializer:
+**3. Initialize, then commit.** `init` asks for the theme name, your name and home
+page, and the theme's permanent identifier. It also offers to join the marketplace
+and to install WebKit; say yes to both unless you have a reason not to.
 
 ```sh
-brew install uv playwright-cli
 uv run nnw-theme init
+git add -A && git commit -m "Initialize theme"
+```
+
+Run `init` only while `.nnw-theme-uninitialized` exists. If WebKit setup failed or you
+skipped it, run `uv run nnw-theme setup` before step 5.
+
+**4. Design.** Start the live preview and edit the files in your `.nnwtheme` folder,
+mostly `stylesheet.css`. The gallery rebuilds each time you save; refresh the browser
+to see it. Stop with Ctrl-C.
+
+```sh
 uv run nnw-theme preview
 ```
 
-Only run `init` if `.nnw-theme-uninitialized` exists. If your copy is already
-initialized, go straight to `uv run nnw-theme preview`.
+**5. Check.** When it looks right, run the release gate. It tests every case in WebKit,
+reports progress, and offers to open the results; fix any failures and run it again.
 
-Linux is supported too; install `uv` and `playwright-cli` with their documented
-package-manager instructions, then use the same commands. The initializer supplies
-sensible defaults, offers to install WebKit, and can add the `netnewswire-theme`
-GitHub topic when you say yes. It never publishes a release.
+```sh
+uv run nnw-theme check
+```
 
-The first setup or preview downloads the small, pinned set of NetNewsWire rendering
-inputs into an ignored cache. The `[tool.nnw-theme.netnewswire]` configuration in
-`pyproject.toml` pins every source file and hash; subsequent previews reuse the cache.
+**6. Choose the marketplace image.** This captures the Mac light article and saves it
+as `screenshots/theme-preview.png`, the picture on your marketplace card.
+
+```sh
+uv run nnw-theme screenshot --promote
+```
+
+**7. Commit and push.**
+
+```sh
+git add -A && git commit -m "Design my theme"
+git push
+```
+
+GitHub runs the same check on every push. The first time, enable **Settings → Pages →
+Build and deployment → Source → GitHub Actions** so your gallery is published too.
+
+**8. Publish.** Follow [Publish](#publish) below: bump the version, then run the
+Publish workflow on GitHub. Repeat steps 4–8 for later versions.
+
+The first `setup`, `preview`, or `check` downloads a small, pinned set of NetNewsWire
+rendering files into an ignored cache. The `[tool.nnw-theme.netnewswire]`
+configuration in `pyproject.toml` pins every file and its hash.
 
 ## Theme Marketplace
 
@@ -162,14 +226,14 @@ uvx --from git+https://github.com/dave-atx/netnewswire-theme-template nnw-theme 
 ## Useful commands
 
 ```text
-uv run nnw-theme init                  Personalize a fresh template
-uv run nnw-theme update [--dry-run]    Refresh tooling from the upstream template
-uv run nnw-theme setup                 Download inputs and install or locate WebKit
-uv run nnw-theme preview [--no-open]   Rebuilding local preview
-uv run nnw-theme render [fixture ...]  Generate the static gallery only
-uv run nnw-theme check [--no-open]     Full release gate; offers to open the results
-uv run nnw-theme package               Deterministic release ZIP
-uv run nnw-theme screenshot --promote  Update the deliberate marketplace image
+uv run nnw-theme init                  Personalize a fresh copy of the template (once)
+uv run nnw-theme setup                 Download rendering files and install WebKit
+uv run nnw-theme update [--dry-run]    Refresh tooling and docs from the template
+uv run nnw-theme preview [--no-open]   Live gallery for editing; rebuilds on save
+uv run nnw-theme render [fixture ...]  Write the gallery once, without checks
+uv run nnw-theme check [--no-open]     Release gate: package and test every case
+uv run nnw-theme screenshot --promote  Check one case and make it the marketplace image
+uv run nnw-theme package               Validate and build the release ZIP only
 uv run nnw-theme bump [--yes]          Increase the integer theme version
 uv run nnw-theme marketplace enable    Add the GitHub discovery topic
 ```
