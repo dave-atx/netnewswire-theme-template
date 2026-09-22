@@ -1,1 +1,1 @@
-Run `uv run nnw-theme init` to personalize this repository.
+Run `npx nnw-theme@1 init` to personalize this repository.
