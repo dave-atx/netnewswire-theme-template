@@ -10,10 +10,14 @@ The starter gives you:
 - a local preview gallery that publishes to GitHub Pages; and
 - automatic validation, packaging, and release builds with GitHub Actions.
 
-This repository holds only the theme. The tooling is the
+[`dave-atx/netnewswire-theme-template`](https://github.com/dave-atx/netnewswire-theme-template)
+is a GitHub template: make one repository from it for each theme
+([below](#create-your-theme-repository)), and do your work in that copy.
+
+A theme repository holds only the theme. The tooling is the
 [`nnw-theme`](https://github.com/dave-atx/nnw-theme) npm package, which you run with
 `npx nnw-theme@1`; nothing is installed into the repository, and fixes to the tooling
-reach your theme without a commit here. You can drive it through a coding agent or
+reach your theme without a commit there. You can drive it through a coding agent or
 use the same commands yourself. No Xcode or NetNewsWire source checkout is required.
 
 It is an independent community project and is not affiliated with or endorsed by
