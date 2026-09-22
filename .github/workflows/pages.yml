@@ -11,8 +11,10 @@ permissions:
   pages: write
   id-token: write
 
+# One group per branch or tag: a tag pushed with main triggers a second run, which
+# skips its deploy and must not cancel main's.
 concurrency:
-  group: pages
+  group: pages-${{ github.event.workflow_run.head_branch }}
   cancel-in-progress: true
 
 jobs:
