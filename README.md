@@ -171,8 +171,7 @@ This validates and packages the exact theme, then checks 16 WebKit renders: two
 articles across macOS, iPhone, iPad, light and dark appearances, plus large-text and
 Article-JavaScript-off cases. Each fixture you add is checked on macOS and iPhone in
 both appearances as well. Every footnote marker must open NetNewsWire's popover with
-its note, stay legible, match the others, and stay on the line of the word it is
-written against. External requests are blocked. Results are written to
+its note, stay legible, and match the others. External requests are blocked. Results are written to
 `build/preview/`, a gallery grouped by scenario that marks each case passed or failed
 and lists failures first; the release ZIP is written to `build/release/`. In a
 terminal, `check` shows its progress and offers to open the gallery when it finishes.
@@ -199,11 +198,13 @@ Previews never touch the network, so images that would load from the web appear 
 same-size placeholders.
 
 A fixture can also say what its footnotes must do. `check` then verifies each marker
-by its text, and that the listed links are left as ordinary links:
+by its text, that the listed links are left as ordinary links, and, with
+`keep_with_word`, that no marker wraps onto a new line apart from its word:
 
 ```toml
 [expect.footnotes]
 plain_links = ["#not-a-footnote"]
+keep_with_word = true
 
 [expect.footnotes.notes]
 "1" = "The first note's text."
