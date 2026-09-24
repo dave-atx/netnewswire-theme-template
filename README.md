@@ -16,7 +16,7 @@ is a GitHub template: make one repository from it for each theme
 
 A theme repository holds only the theme. The tooling is the
 [`nnw-theme`](https://github.com/dave-atx/nnw-theme) npm package, which you run with
-`npx nnw-theme@1`; nothing is installed into the repository, and fixes to the tooling
+`npx nnw-theme@2`; nothing is installed into the repository, and fixes to the tooling
 reach your theme without a commit there. You can drive it through a coding agent or
 use the same commands yourself. No Xcode or NetNewsWire source checkout is required.
 
@@ -96,33 +96,33 @@ page, and the theme's permanent identifier. It also offers to join the marketpla
 and to install WebKit; say yes to both unless you have a reason not to.
 
 ```sh
-npx nnw-theme@1 init
+npx nnw-theme@2 init
 git add -A && git commit -m "Initialize theme"
 ```
 
 Run `init` only while `.nnw-theme-uninitialized` exists. If WebKit setup failed or you
-skipped it, run `npx nnw-theme@1 setup` before step 5.
+skipped it, run `npx nnw-theme@2 setup` before step 5.
 
 **4. Design.** Start the live preview and edit the files in your `.nnwtheme` folder,
 mostly `stylesheet.css`. The gallery rebuilds each time you save; refresh the browser
 to see it. Stop with Ctrl-C.
 
 ```sh
-npx nnw-theme@1 preview
+npx nnw-theme@2 preview
 ```
 
 **5. Check.** When it looks right, run the release gate. It tests every case in WebKit,
 reports progress, and offers to open the results; fix any failures and run it again.
 
 ```sh
-npx nnw-theme@1 check
+npx nnw-theme@2 check
 ```
 
 **6. Choose the marketplace image.** This captures the Mac light article and saves it
 as `screenshots/theme-preview.png`, the picture on your marketplace card.
 
 ```sh
-npx nnw-theme@1 screenshot --promote
+npx nnw-theme@2 screenshot --promote
 ```
 
 **7. Commit and push.**
@@ -138,23 +138,23 @@ Build and deployment → Source → GitHub Actions** so your gallery is publishe
 **8. Publish.** Follow [Publish](#publish) below: bump the version, then run the
 Publish workflow on GitHub. Repeat steps 4–8 for later versions.
 
-The first `npx nnw-theme@1` downloads the package into npm's cache; later runs reuse
-it and pick up new 1.x releases automatically. The NetNewsWire rendering files the
+The first `npx nnw-theme@2` downloads the package into npm's cache; later runs reuse
+it and pick up new 2.x releases automatically. The NetNewsWire rendering files the
 previews use ship inside the package, pinned and verified by hash.
 
 ### Shorter commands
 
 `completion` prints shell completion for commands, options, and your fixture names.
-It also defines an `nnw-theme` command that runs `npx --yes nnw-theme@1`, so you can
+It also defines an `nnw-theme` command that runs `npx --yes nnw-theme@2`, so you can
 type `nnw-theme check`:
 
 ```sh
 # fish
-npx nnw-theme@1 completion fish > ~/.config/fish/conf.d/nnw-theme.fish
+npx nnw-theme@2 completion fish > ~/.config/fish/conf.d/nnw-theme.fish
 # zsh (~/.zshrc, after compinit)
-source <(npx --yes nnw-theme@1 completion zsh)
+source <(npx --yes nnw-theme@2 completion zsh)
 # bash (~/.bashrc)
-source <(npx --yes nnw-theme@1 completion bash)
+source <(npx --yes nnw-theme@2 completion bash)
 ```
 
 ## Theme Marketplace
@@ -189,7 +189,7 @@ in `.agents/skills/`, and four workflows in `.github/workflows/` that call
 Run the release gate before sharing a theme:
 
 ```sh
-npx nnw-theme@1 check
+npx nnw-theme@2 check
 ```
 
 This validates and packages the exact theme, then checks 16 WebKit renders: two
@@ -216,10 +216,10 @@ Fixtures are the articles every preview and check renders: TOML files whose keys
 the template macros (`title`, `byline`, `feed_link_title`, `body`, and so on). Two
 built-in fixtures, `article` and `kitchen-sink`, come with the tool. Add your own in
 `fixtures/` for the content your theme has to handle, and preview one with
-`npx nnw-theme@1 render NAME`. A file named `fixtures/article.toml` or
+`npx nnw-theme@2 render NAME`. A file named `fixtures/article.toml` or
 `fixtures/kitchen-sink.toml` replaces the built-in one.
 
-The best fixtures are real articles. `npx nnw-theme@1 capture` explains how to save
+The best fixtures are real articles. `npx nnw-theme@2 capture` explains how to save
 the one selected in a NetNewsWire debug build, exactly as the app would render it.
 Previews never touch the network, so images that would load from the web appear as
 same-size placeholders.
@@ -239,18 +239,18 @@ keep_with_word = true
 ```
 
 Put these tables after the fixture's other keys, including `body`. See
-`npx nnw-theme@1 guide fixtures` for every key.
+`npx nnw-theme@2 guide fixtures` for every key.
 
 Generated gallery screenshots stay ignored under `build/`. Keep the deliberately
 chosen `screenshots/theme-preview.png` in source control: the marketplace uses it for
 the theme card. Initialization removes the template’s neutral image; create your own
-with `npx nnw-theme@1 screenshot --promote`. The screenshot workflow can open a pull
+with `npx nnw-theme@2 screenshot --promote`. The screenshot workflow can open a pull
 request when it changes; for that, turn on **Settings → Actions → General → Workflow
 permissions → Allow GitHub Actions to create and approve pull requests**.
 
 ## Publish
 
-1. Run `npx nnw-theme@1 bump` and commit the changed `Info.plist`.
+1. Run `npx nnw-theme@2 bump` and commit the changed `Info.plist`.
 2. In GitHub, choose **Actions → Publish theme → Run workflow**.
 3. Enter a tag beginning with `v` (for example, `v1.0.0`) and optional notes.
 
@@ -261,22 +261,22 @@ are generated from the commits since the previous tag.
 The workflow releases only the current default-branch commit and refuses a reused
 tag, a non-increasing plist version, or changes to the identifier or bundle filename.
 Marketplace metadata remains advisory: private repositories and repositories without
-the topic can still publish valid themes. See `npx nnw-theme@1 guide publishing`.
+the topic can still publish valid themes. See `npx nnw-theme@2 guide publishing`.
 
 ## Useful commands
 
 ```text
-npx nnw-theme@1 init                  Personalize a fresh copy of the template (once)
-npx nnw-theme@1 setup                 Install the WebKit browser for checks
-npx nnw-theme@1 preview [--no-open]   Live gallery for editing; rebuilds on save
-npx nnw-theme@1 render [fixture ...]  Write the gallery once, without checks
-npx nnw-theme@1 check [--no-open]     Release gate: package and test every case
-npx nnw-theme@1 screenshot --promote  Check one case and make it the marketplace image
-npx nnw-theme@1 capture               Explain how to capture a real article as a fixture
-npx nnw-theme@1 package               Validate and build the release ZIP only
-npx nnw-theme@1 bump [--yes]          Increase the integer theme version
-npx nnw-theme@1 marketplace enable    Add the GitHub discovery topic
-npx nnw-theme@1 guide [topic]         Read the authoring guide
+npx nnw-theme@2 init                  Personalize a fresh copy of the template (once)
+npx nnw-theme@2 setup                 Install the WebKit browser for checks
+npx nnw-theme@2 preview [--no-open]   Live gallery for editing; rebuilds on save
+npx nnw-theme@2 render [fixture ...]  Write the gallery once, without checks
+npx nnw-theme@2 check [--no-open]     Release gate: package and test every case
+npx nnw-theme@2 screenshot --promote  Check one case and make it the marketplace image
+npx nnw-theme@2 capture               Explain how to capture a real article as a fixture
+npx nnw-theme@2 package               Validate and build the release ZIP only
+npx nnw-theme@2 bump [--yes]          Increase the integer theme version
+npx nnw-theme@2 marketplace enable    Add the GitHub discovery topic
+npx nnw-theme@2 guide [topic]         Read the authoring guide
 ```
 
 For agent-oriented constraints, read [AGENTS.md](AGENTS.md). Report tooling problems
