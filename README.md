@@ -118,11 +118,12 @@ reports progress, and offers to open the results; fix any failures and run it ag
 npx nnw-theme@2 check
 ```
 
-**6. Choose the marketplace image.** This captures the Mac light article and saves it
-as `screenshots/theme-preview.png`, the picture on your marketplace card.
+**6. Choose the marketplace image.** This captures the Mac light article in the card's
+shape and saves it as `screenshots/theme-preview.png`, the picture on your marketplace
+card. `--fixture NAME` captures one of your own fixtures instead.
 
 ```sh
-npx nnw-theme@2 screenshot --promote
+npx nnw-theme@2 screenshot --card --promote
 ```
 
 **7. Commit and push.**
@@ -244,9 +245,11 @@ Put these tables after the fixture's other keys, including `body`. See
 Generated gallery screenshots stay ignored under `build/`. Keep the deliberately
 chosen `screenshots/theme-preview.png` in source control: the marketplace uses it for
 the theme card. Initialization removes the template’s neutral image; create your own
-with `npx nnw-theme@2 screenshot --promote`. The screenshot workflow can open a pull
-request when it changes; for that, turn on **Settings → Actions → General → Workflow
-permissions → Allow GitHub Actions to create and approve pull requests**.
+with `npx nnw-theme@2 screenshot --card --promote`. A fixture can show real images
+committed under `fixtures/media/` (see `npx nnw-theme@2 guide fixtures`). The screenshot
+workflow can open a pull request when it changes; for that, turn on **Settings → Actions
+→ General → Workflow permissions → Allow GitHub Actions to create and approve pull
+requests**.
 
 ## Publish
 
