@@ -232,6 +232,8 @@ The theme is the one `*.nnwtheme` folder at the root:
 
 - `stylesheet.css` is the visual design, with clearly named variables.
 - `template.html` is the article structure and NetNewsWire macros.
+- `template7.3.html` is the same structure plus the article's audio, video, and
+  images. NetNewsWire 7.3 reads it instead, and older releases ignore it.
 - `Info.plist` holds the theme's public identity, its integer version, and the
   version and copyright Finder's Get Info shows.
 
