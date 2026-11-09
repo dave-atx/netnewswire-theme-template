@@ -210,7 +210,9 @@ same either way.
 
 ## Publish
 
-1. Run `npx nnw-theme@2 bump` and commit the changed `Info.plist`.
+1. Run `npx nnw-theme@2 bump` and commit the changed `Info.plist`. It increases the
+   last number of the version Finder's Get Info shows; pass `--get-info-version 2.0.0`
+   for anything else.
 2. On GitHub, choose **Actions → Publish theme → Run workflow**.
 3. Enter a tag starting with `v` (e.g., `v1.0.0`) and, optionally, release notes.
 
@@ -230,7 +232,8 @@ The theme is the one `*.nnwtheme` folder at the root:
 
 - `stylesheet.css` is the visual design, with clearly named variables.
 - `template.html` is the article structure and NetNewsWire macros.
-- `Info.plist` holds the theme's public identity and integer version.
+- `Info.plist` holds the theme's public identity, its integer version, and the
+  version and copyright Finder's Get Info shows.
 
 Next to it are `screenshots/theme-preview.png`, the optional `fixtures/` folder, and
 a few small files that hook the repository up to the tooling: `AGENTS.md`, the agent
@@ -249,7 +252,7 @@ npx nnw-theme@2 check [--no-open]     Release check: package and test every case
 npx nnw-theme@2 screenshot --promote  Check one case and make it the marketplace image
 npx nnw-theme@2 capture               Explain how to capture a real article as a fixture
 npx nnw-theme@2 package               Validate and build the release ZIP only
-npx nnw-theme@2 bump [--yes]          Increase the integer theme version
+npx nnw-theme@2 bump [--yes]          Increase the theme's versions
 npx nnw-theme@2 marketplace enable    Add the GitHub discovery topic
 npx nnw-theme@2 guide [topic]         Read the authoring guide
 ```
