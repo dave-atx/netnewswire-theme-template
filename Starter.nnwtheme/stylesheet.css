@@ -209,7 +209,9 @@ figure {
   margin-inline: 0;
 }
 
-figcaption {
+figcaption,
+.nnw-enclosure-caption,
+.nnw-primary-image-caption {
   color: var(--muted);
   font-family: var(--display-font);
   font-size: 0.82em;
